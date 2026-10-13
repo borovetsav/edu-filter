@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>Edu Filter</title>
@@ -8,6 +8,7 @@
     h1 { font-size: 15px; margin: 0 0 10px; }
     h2 { font-size: 14px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline; }
     label { display: block; font-weight: 600; margin: 10px 0 4px; }
+    .hint { font-weight: 400; color: #666; }
     textarea { width: 100%; box-sizing: border-box; min-height: 90px; resize: vertical; font: inherit; padding: 6px; }
     .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
     button { padding: 6px 12px; cursor: pointer; }
@@ -34,23 +35,26 @@
   <h1>Edu Filter</h1>
 
   <section>
-    <h2>Видео <button id="clear" hidden>очистить историю</button></h2>
+    <h2>Videos <button id="clear" hidden>clear history</button></h2>
     <ul id="videos"></ul>
-    <p id="empty" class="empty">Пока пусто. Здесь появятся полезные видео (и видео, при обработке которых что-то пошло не так), со ссылкой на чат с конспектом и тестом.</p>
+    <p id="empty" class="empty">Nothing here yet. Useful videos (and videos that failed to process) will show up here with a link to the chat with their summary and quiz.</p>
   </section>
 
   <details>
-    <summary>Настройки промптов</summary>
+    <summary>Prompt settings</summary>
 
-    <label for="prompt_1">Промпт 1 (классификация, к нему добавляется ссылка)</label>
+    <label for="prompt_1">Prompt 1: classification <span class="hint">(the video URL is appended)</span></label>
     <textarea id="prompt_1"></textarea>
 
-    <label for="prompt_2">Промпт 2 (конспект + тест)</label>
+    <label for="prompt_2">Prompt 2: summary and quiz</label>
     <textarea id="prompt_2"></textarea>
 
+    <label for="prompt_3">Prompt 3: quiz for a part of a long video <span class="hint">({part} {total} {start} {end} {chapters} {url})</span></label>
+    <textarea id="prompt_3"></textarea>
+
     <div class="row">
-      <button id="save">Сохранить</button>
-      <button id="reset">По умолчанию</button>
+      <button id="save">Save</button>
+      <button id="reset">Reset to defaults</button>
       <span id="status"></span>
     </div>
   </details>

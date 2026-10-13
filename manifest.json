@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Edu Filter",
-  "version": "1.0.0",
-  "description": "Считает время просмотра YouTube и через Gemini делает конспект полезных видео.",
+  "version": "1.1.0",
+  "description": "Tracks YouTube watch time and uses Gemini to turn useful videos into summaries and quizzes.",
   "permissions": ["storage", "scripting", "tabs"],
   "host_permissions": [
     "https://www.youtube.com/*",

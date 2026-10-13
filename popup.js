@@ -1,6 +1,6 @@
 import { DEFAULT_PROMPTS, getPrompts, VIDEO_KEY_PREFIX } from './defaults.js';
 
-// ---------- Промпты ----------
+// ---------- Prompts ----------
 
 const fields = Object.keys(DEFAULT_PROMPTS).map((key) => document.getElementById(key));
 const status = document.getElementById('status');
@@ -17,27 +17,27 @@ function flash(text) {
 document.getElementById('save').addEventListener('click', async () => {
   const values = Object.fromEntries(fields.map((el) => [el.id, el.value]));
   await chrome.storage.local.set(values);
-  flash('Сохранено');
+  flash('Saved');
 });
 
 document.getElementById('reset').addEventListener('click', async () => {
   fill(DEFAULT_PROMPTS);
   await chrome.storage.local.set(DEFAULT_PROMPTS);
-  flash('Сброшено');
+  flash('Reset');
 });
 
-// ---------- История полезных видео ----------
+// ---------- Video history ----------
 
 const list = document.getElementById('videos');
 const empty = document.getElementById('empty');
 const clearBtn = document.getElementById('clear');
 
 const STATUS_TEXT = {
-  PENDING: { text: 'Gemini анализирует видео…' },
-  USEFUL: { text: 'Конспект и тест готовятся…' },
-  SUMMARY_DONE: { text: 'Конспект и тест готовы', cls: 'ready' },
-  UNKNOWN: { text: 'Не удалось распознать ответ Gemini', cls: 'error' },
-  ERROR: { text: 'Ошибка', cls: 'error' },
+  PENDING: { text: 'Gemini is analyzing the video...' },
+  USEFUL: { text: 'Summary and quiz in progress...' },
+  SUMMARY_DONE: { text: 'Summary and quiz ready', cls: 'ready' },
+  UNKNOWN: { text: "Couldn't read Gemini's verdict", cls: 'error' },
+  ERROR: { text: 'Error', cls: 'error' },
 };
 
 async function getVideos() {
@@ -45,15 +45,29 @@ async function getVideos() {
   return Object.entries(all)
     .filter(([key]) => key.startsWith(VIDEO_KEY_PREFIX))
     .map(([key, state]) => ({ videoId: key.slice(VIDEO_KEY_PREFIX.length), ...state }))
-    // Развлекательные не показываем. Сбои (UNKNOWN, ERROR) показываем всегда,
-    // чтобы было видно, что пошло не так.
+    // Entertainment videos are hidden; failures (UNKNOWN, ERROR) are always
+    // shown so it is clear what went wrong.
     .filter((v) => v.status !== 'FUN')
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 }
 
 function formatDate(ts) {
   if (!ts) return '';
-  return new Date(ts).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+// Counts only the parts whose quiz was requested; a part is listed once the
+// user clicks "Take the quiz" on its card.
+function quizSummary(quizzes) {
+  const values = Object.values(quizzes ?? {});
+  if (!values.length) return '';
+  const count = (status) => values.filter((s) => s === status).length;
+  const parts = [
+    count('DONE') && `${count('DONE')} ready`,
+    count('REQUESTED') && `${count('REQUESTED')} in progress`,
+    count('ERROR') && `${count('ERROR')} failed`,
+  ].filter(Boolean);
+  return `part quizzes: ${parts.join(', ')}`;
 }
 
 function renderVideo(v) {
@@ -71,22 +85,22 @@ function renderVideo(v) {
   const s = STATUS_TEXT[v.status] ?? { text: v.status };
   const meta = document.createElement('div');
   meta.className = `meta ${s.cls ?? ''}`;
-  meta.textContent = [s.text, formatDate(v.createdAt)].filter(Boolean).join(' · ');
+  meta.textContent = [s.text, quizSummary(v.quizzes), formatDate(v.createdAt)].filter(Boolean).join(' · ');
 
   info.append(link, meta);
   if ((v.status === 'ERROR' || v.status === 'UNKNOWN') && v.detail) {
     const detail = document.createElement('div');
     detail.className = 'meta error';
-    detail.textContent = v.status === 'UNKNOWN' ? `Gemini ответил: «${v.detail}»` : v.detail;
+    detail.textContent = v.status === 'UNKNOWN' ? `Gemini replied: "${v.detail}"` : v.detail;
     info.append(detail);
   }
   li.append(info);
 
-  // Чат доступен, как только открыта вкладка Gemini, даже если вердикта ещё нет.
+  // The chat is reachable as soon as the Gemini tab exists, even before the verdict.
   if (v.tabId != null || v.chatUrl) {
     const open = document.createElement('button');
     open.className = 'open-chat';
-    open.textContent = 'Открыть чат';
+    open.textContent = 'Open chat';
     open.addEventListener('click', async () => {
       await chrome.runtime.sendMessage({ type: 'OPEN_GEMINI_CHAT', videoId: v.videoId });
       window.close();
@@ -103,14 +117,14 @@ async function renderVideos() {
   clearBtn.hidden = videos.length === 0;
 }
 
-// Подтверждение вторым нажатием: confirm() во всплывающем окне расширения
-// ненадёжен (окно может закрыться, а confirm — вернуть false).
+// Confirmation by a second click: confirm() in an extension popup is
+// unreliable (the popup may close and confirm() returns false).
 const CLEAR_LABEL = clearBtn.textContent;
 let clearArmed = null;
 
 clearBtn.addEventListener('click', async () => {
   if (!clearArmed) {
-    clearBtn.textContent = 'нажмите ещё раз, чтобы удалить';
+    clearBtn.textContent = 'click again to delete';
     clearArmed = setTimeout(() => {
       clearArmed = null;
       clearBtn.textContent = CLEAR_LABEL;
@@ -124,7 +138,7 @@ clearBtn.addEventListener('click', async () => {
   await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith(VIDEO_KEY_PREFIX)));
 });
 
-// Статусы обновляются, пока popup открыт (например, конспект дописался).
+// Keep statuses live while the popup is open (e.g. a summary just finished).
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && Object.keys(changes).some((k) => k.startsWith(VIDEO_KEY_PREFIX))) renderVideos();
 });

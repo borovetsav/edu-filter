@@ -2,19 +2,34 @@
 
 A Chrome extension (Manifest V3) that turns the YouTube videos you actually watch into study material.
 
-After you've watched a video for one minute, the extension asks [Gemini](https://gemini.google.com) whether the video is educational or just entertainment. For educational videos, it then asks Gemini for a detailed summary and a short quiz. It all happens in a background tab, so you don't have to stop watching.
+After you've watched a video for one minute, the extension asks [Gemini](https://gemini.google.com) whether the video is educational or just entertainment. For educational videos, it then asks Gemini for a detailed summary and a short quiz. It all happens in a background tab, so you don't have to stop watching. Long videos are split into parts of 40–60 minutes, and after each part the video pauses and offers a quiz on just that part.
 
 ## How it works
 
 1. **Watch-time tracking (`content_yt.js`).** The extension counts the seconds a video is actually playing. Pauses, seeking and ads don't count. The counter resets when you move to another video. YouTube is a single-page app, so the extension listens for `yt-navigate-finish` to notice the change. After 60 seconds of watching, it fires once for that video.
-2. **Background tab (`background.js`).** The extension opens `gemini.google.com/app` in an inactive tab and injects the automation script into it. It then hands that script the video URL and your two prompts.
+2. **Background tab (`background.js`).** The extension opens `gemini.google.com/app` in an inactive tab and injects the automation script into it. It then hands that script the video URL and your prompts.
 3. **Gemini automation (`content_gemini.js`):**
-   - **Step 1.** Sends prompt 1 together with the video URL. Gemini is asked to answer with a single word: `ПОЛЬЗА` (useful) or `РАЗВЛЕЧЕНИЕ` (entertainment).
+   - **Step 1.** Sends prompt 1 together with the video URL. Gemini is asked to answer with a single word: `USEFUL` or `ENTERTAINMENT`.
    - **Step 2.** Waits for Gemini to finish answering and reads the verdict.
    - **Step 3.** If the verdict is useful, sends prompt 2 to get the summary and the quiz. If it's entertainment, it stops there.
-4. **Coming back to the chat:**
+4. **Long videos** (see [below](#long-videos)) get a quiz after each part.
+5. **Coming back to the chat:**
    - **End-of-video card.** When a useful video has less than 15 seconds left, a card appears on YouTube with a button that opens the Gemini chat for that video.
    - **Popup.** Clicking the extension icon shows every processed video with its status and an **Open chat** button. So you can still reach the chat if you closed the card.
+
+## Long videos
+
+A useful video is split into parts if it is about 75 minutes or longer:
+
+- **Part length.** The number of parts is the duration divided by 50 minutes, rounded, so each part is roughly 40–60 minutes long.
+- **Boundaries follow chapters.** Each boundary moves to the nearest chapter start within 10 minutes. Chapters come from the video's chapter list, or from timestamps in the description if there is no list. Without chapters, the parts are equal.
+- **At the end of each part** the video pauses and a card appears:
+  - **Take the quiz** sends prompt 3 to the video's Gemini chat, asking for a quiz on that part only (its time range and chapter titles), and switches to that chat;
+  - **Keep watching** resumes the video.
+- **The last part** ends 15 seconds before the end of the video, where the end-of-video card would otherwise appear.
+- **Seeking past a boundary skips that part's card.** The video only pauses when it plays through a boundary.
+
+For example, the 1:56 lecture [*Let's build GPT*](https://www.youtube.com/watch?v=kCc8FmEb1nY) is split into 0:00–58:26 and 58:26–1:56:05. The boundary sits at the start of the "minor code cleanup" chapter.
 
 ## Installation
 
@@ -36,22 +51,26 @@ Watch YouTube as usual. After a minute of watching:
 - Its status shows up in the popup:
   - *Gemini is analyzing* — the first prompt has been sent;
   - *Summary and quiz in progress* — the video was judged useful and the second prompt has been sent;
-  - *Ready* — the summary and quiz are done;
+  - *Summary and quiz ready* — both are done;
   - an error, with the reason.
+- For long videos, the popup also shows how many part quizzes are ready.
 - Entertainment videos don't appear in the list.
 
-Each video is processed only once, and the history is kept across browser restarts. To process a video again, open the popup and click **очистить историю** (clear history) twice. Then reload the YouTube tab.
+Each video is processed only once, and the history is kept across browser restarts. To process a video again, open the popup and click **clear history** twice. Then reload the YouTube tab.
 
 ### Customizing prompts
 
-Open the popup, expand **Настройки промптов** (prompt settings), edit the prompts and click **Сохранить** (save).
+Open the popup, expand **Prompt settings**, edit the prompts and click **Save**. **Reset to defaults** restores the built-in prompts.
 
-| Prompt | Default (Russian) | Purpose |
-|---|---|---|
-| `prompt_1` | *Analyze the video at the link and reply with exactly one word: 'РАЗВЛЕЧЕНИЕ' if it's just for fun, or 'ПОЛЬЗА' if it has educational content. Link:* | Classification. The video URL is appended. |
-| `prompt_2` | *Great, now write a detailed summary of this video and a 3-question quiz to test understanding.* | Summary and quiz. |
+| Prompt | Purpose |
+|---|---|
+| `prompt_1` | Classification. The video URL is appended. |
+| `prompt_2` | Summary and quiz for the whole video. |
+| `prompt_3` | Quiz for one part of a long video. Placeholders: `{part}`, `{total}`, `{start}`, `{end}`, `{chapters}` (". Topics of this part: ..." or empty), `{url}`. |
 
-The classifier looks for the words `ПОЛЬЗА` and `РАЗВЛЕЧЕНИЕ` in Gemini's answer, case-insensitively. If you rewrite `prompt_1`, keep asking Gemini to reply with one of these two words.
+By default, prompts 2 and 3 ask Gemini to answer in Russian. Change that line to get summaries in another language.
+
+The classifier looks for the words `USEFUL` and `ENTERTAINMENT` in Gemini's answer, case-insensitively. If both appear, the first one wins, because the verdict comes before the YouTube card with the video title. If you rewrite `prompt_1`, keep asking Gemini to reply with one of these two words.
 
 ## Project structure
 
@@ -59,21 +78,26 @@ The classifier looks for the words `ПОЛЬЗА` and `РАЗВЛЕЧЕНИЕ` i
 manifest.json       MV3 manifest: permissions, content scripts, popup
 defaults.js         Default prompts and shared storage helpers
 background.js       Service worker: opens the Gemini tab, injects the script, stores per-video state
-content_yt.js       YouTube: watch-time counter and end-of-video card
+content_yt.js       YouTube: watch time, long-video parts, pause cards
 content_gemini.js   Gemini: sends prompts, waits for answers, classifies
 popup.html/.js      Video history and prompt settings
 ```
 
-Per-video state is kept in `chrome.storage.local` under keys like `video:<videoId>`. It includes the status, the verdict, the video title, the Gemini tab ID and the chat URL.
+Per-video state is kept in `chrome.storage.local` under keys like `video:<videoId>`. It includes the status, the verdict, the video title, the Gemini tab ID, the chat URL and the part-quiz statuses.
 
 ## Notes on automating Gemini
 
 The extension drives Gemini's web interface rather than an API, so it depends on how that page is built. A few non-obvious details that came up during development:
 
 - **Background tabs hide the answer.** In an inactive tab, Gemini adds the answer to the page but keeps it hidden (`pending` class, 0×0 size) until you open the tab. The script therefore reads the answer with `textContent`. `innerText` or a visibility check would see an empty answer.
-- **There's a hidden "Ответ Gemini" heading.** Every answer contains an invisible heading meant for screen readers. It appears before the real answer, so the script skips it. Otherwise it would read the heading while the model is still thinking.
-- **Don't filter by `thought`.** The answer containers carry a `has-thoughts` class, so dropping every element whose class contains "thought" would drop the answer too.
-- **The send button** is `.send-button > button[aria-label="Отправить сообщение"]`. Matching "send" anywhere in an aria-label also hits unrelated buttons.
+- **There's a hidden heading in every answer.** It is meant for screen readers (`.cdk-visually-hidden`) and appears before the real answer, so the script skips it. Otherwise it would read the heading while the model is still thinking.
+- **Don't filter by `thought`.** The answer containers carry a `has-thoughts` class, so dropping every element whose class contains "thought" would drop the answer too. The answer itself is in `<message-content>`.
+- **Send and stop are the same button.**
+  - It lives in `div.send-button`. The container gets `submit` when there's text to send and `stop` while Gemini is generating.
+  - The script matches on these classes, so it works whatever language Gemini's interface uses.
+  - It never sends while `stop` is present.
+- **Sending is verified.** Gemini sometimes ignores a click on the send button, for example when a canvas document is open in a tab that was just focused. After each attempt the script checks that a new user message appeared or the input cleared, and retries up to 3 times.
+- **Prompts are queued.** A part-quiz request can arrive while Gemini is still writing the summary, so the script waits until that answer is done.
 
 All selectors are listed at the top of `content_gemini.js`, from the most specific to the most generic. If Gemini changes its page, start there.
 
@@ -81,14 +105,14 @@ All selectors are listed at the top of `content_gemini.js`, from the most specif
 
 - **The Gemini tab shows a status panel in its bottom-left corner.** It shows the current step, what the script has read from the answer, and whether Gemini is still generating.
 - **Logs:**
-  - in the YouTube and Gemini tabs, open DevTools (F12) → Console and filter by `[EduFilter]`;
+  - in the YouTube and Gemini tabs, open DevTools (F12) → Console and filter by `[EduFilter]`. For a long video, the YouTube log lists its parts;
   - for the background part, go to `chrome://extensions` → Edu Filter → **service worker**.
 - **No Gemini tab opens.** Either the video is already in the history (clear it, see [Usage](#usage)), or the YouTube tab wasn't reloaded after you reloaded the extension. In the second case the old script on the page is disconnected and does nothing.
-- **"Таймаут ожидания: поле ввода" (timed out waiting for the input field).** You're signed out of Gemini, or a dialog is covering the input field.
+- **"Timed out waiting for the input field".** You're signed out of Gemini, or a dialog is covering the input field.
 
 ## Limitations
 
 - **You need a signed-in Gemini session in the same Chrome profile.** Your prompts and Gemini's answers are saved in your Gemini chat history.
-- **Gemini's page can change at any time.** When it does, the selectors in `content_gemini.js` may need updating.
+- **Gemini's page can change at any time, and so can YouTube's.** When that happens, the selectors in `content_gemini.js` and `content_yt.js` may need updating. For example, YouTube has rendered chapter titles both as `h3` and as `h4`.
 - **Some short videos won't show the end-of-video card.** If Gemini's verdict arrives after the video has ended, the card isn't shown. The chat is still available from the popup.
-- **The interface and default prompts are in Russian.**
+- **Timestamps in the description are less reliable than the chapter list.** Descriptions often contain unrelated timestamps, so parts are only as good as the chapters found.
