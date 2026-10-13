@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Edu Filter</title>
+  <style>
+    body { width: 420px; margin: 0; padding: 14px; font: 13px/1.4 system-ui, sans-serif; }
+    h1 { font-size: 15px; margin: 0 0 10px; }
+    h2 { font-size: 14px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline; }
+    label { display: block; font-weight: 600; margin: 10px 0 4px; }
+    textarea { width: 100%; box-sizing: border-box; min-height: 90px; resize: vertical; font: inherit; padding: 6px; }
+    .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+    button { padding: 6px 12px; cursor: pointer; }
+    #status { color: #188038; }
+
+    #videos { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+    #videos li { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid #e3e3e3; }
+    .info { flex: 1; min-width: 0; }
+    .info a { display: block; color: inherit; font-weight: 500; text-decoration: none;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .info a:hover { text-decoration: underline; }
+    .meta { color: #666; font-size: 12px; }
+    .meta.ready { color: #188038; }
+    .meta.error { color: #c5221f; }
+    .open-chat { flex: none; padding: 5px 10px; border: 0; border-radius: 14px; background: #1a73e8; color: #fff; }
+    .open-chat:hover { background: #1765cc; }
+    .empty { color: #666; margin: 0; }
+    #clear { padding: 0; border: 0; background: none; color: #666; font-size: 12px; text-decoration: underline; }
+    details { margin-top: 14px; }
+    summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Edu Filter</h1>
+
+  <section>
+    <h2>Видео <button id="clear" hidden>очистить историю</button></h2>
+    <ul id="videos"></ul>
+    <p id="empty" class="empty">Пока пусто. Здесь появятся полезные видео (и видео, при обработке которых что-то пошло не так), со ссылкой на чат с конспектом и тестом.</p>
+  </section>
+
+  <details>
+    <summary>Настройки промптов</summary>
+
+    <label for="prompt_1">Промпт 1 (классификация, к нему добавляется ссылка)</label>
+    <textarea id="prompt_1"></textarea>
+
+    <label for="prompt_2">Промпт 2 (конспект + тест)</label>
+    <textarea id="prompt_2"></textarea>
+
+    <div class="row">
+      <button id="save">Сохранить</button>
+      <button id="reset">По умолчанию</button>
+      <span id="status"></span>
+    </div>
+  </details>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

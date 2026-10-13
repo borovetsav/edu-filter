@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Edu Filter",
+  "version": "1.0.0",
+  "description": "Считает время просмотра YouTube и через Gemini делает конспект полезных видео.",
+  "permissions": ["storage", "scripting", "tabs"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://gemini.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content_yt.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Edu Filter",
+    "default_popup": "popup.html"
+  }
+}
