@@ -7,8 +7,9 @@
 //   video is shorter than that, once SHORT_VIDEO_SHARE of it was watched).
 // - Places quiz breaks in useful videos every ~N minutes of the timeline
 //   (moved to chapter starts when possible). When the playhead moves forward
-//   past a break, by playback or by seeking, the video pauses and a card
-//   offers a quiz on the stretch since the previous break.
+//   past a break, by playback or by seeking, a card in the top right corner
+//   offers a quiz on the stretch since the previous break; the video keeps
+//   playing.
 // - Shows a "go to the Gemini chat" card near the end of videos too short
 //   for a break.
 (() => {
@@ -287,8 +288,9 @@
     crossed.forEach((part) => shownParts.add(partKey(part)));
 
     const last = crossed.at(-1);
-    video.pause();
-    showPartCard(video, {
+    // The video keeps playing: the card waits in the corner until the user
+    // takes the quiz or closes it.
+    showPartCard({
       ...last,
       start: crossed[0].start,
       chapters: crossed.flatMap((part) => part.chapters),
@@ -306,14 +308,14 @@
 
   const CARD_STYLE = `
     .card {
-      position: fixed; right: 24px; bottom: 24px; z-index: 2147483647;
+      position: fixed; right: 16px; top: 68px; z-index: 2147483647;
       width: 340px; padding: 16px 18px; box-sizing: border-box;
       background: #fff; color: #1f1f1f; border-radius: 12px;
       box-shadow: 0 8px 28px rgba(0,0,0,.28);
       font: 14px/1.45 Roboto, Arial, sans-serif;
       animation: in .25s ease-out;
     }
-    @keyframes in { from { opacity: 0; transform: translateY(12px); } }
+    @keyframes in { from { opacity: 0; transform: translateY(-12px); } }
     .title { font-weight: 600; font-size: 15px; margin: 0 24px 6px 0; }
     .text { margin: 0 0 12px; color: #444; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -373,14 +375,14 @@
     if (host) (document.fullscreenElement || document.body).appendChild(host);
   });
 
-  function showPartCard(video, part) {
+  function showPartCard(part) {
     const id = videoId;
     const isLast = part.index === part.total - 1;
     const topics = part.chapters.slice(0, 3).join('; ');
     showCard({
-      title: isLast ? 'Almost done: time for a quiz' : 'Time for a quiz',
+      title: isLast ? 'Almost done: take a quiz' : 'Take a quiz to lock in the material',
       lines: [
-        `Covers ${formatTime(part.start)} – ${formatTime(part.end)} of the video. Take a short quiz on it to lock in the material.`,
+        `You've reached ${formatTime(part.end)}. The quiz covers ${formatTime(part.start)} – ${formatTime(part.end)} of the video; the video keeps playing.`,
         ...(topics ? [`Topics: ${topics}${part.chapters.length > 3 ? '; ...' : ''}`] : []),
       ],
       actions: [
@@ -389,7 +391,7 @@
           primary: true,
           onClick: () => send({ type: 'REQUEST_PART_QUIZ', videoId: id, part }).catch(() => {}),
         },
-        { label: 'Keep watching', onClick: () => video.play() },
+        { label: 'Later', onClick: () => {} },
       ],
     });
   }

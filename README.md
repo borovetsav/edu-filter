@@ -2,7 +2,7 @@
 
 A Chrome extension (Manifest V3) that turns the YouTube videos you actually watch into study material.
 
-After you've watched a video for 10 minutes (configurable), the extension asks [Gemini](https://gemini.google.com) whether the video is educational or just entertainment. For educational videos, it then asks Gemini for a detailed summary and a short quiz. It all happens in a background tab, so you don't have to stop watching. Every ~40 minutes of a useful video (configurable), the video pauses and offers a quiz on the stretch since the previous break.
+After you've watched a video for 10 minutes (configurable), the extension asks [Gemini](https://gemini.google.com) whether the video is educational or just entertainment. For educational videos, it then asks Gemini for a detailed summary and a short quiz. It all happens in a background tab, so you don't have to stop watching. Every ~40 minutes of a useful video's timeline (configurable), a card in the top right corner offers a quiz on the stretch since the previous break, without stopping the video.
 
 ## How it works
 
@@ -12,7 +12,7 @@ After you've watched a video for 10 minutes (configurable), the extension asks [
    - **Step 1.** Sends prompt 1 together with the video URL. Gemini is asked to answer with a single word: `USEFUL` or `ENTERTAINMENT`.
    - **Step 2.** Waits for Gemini to finish answering and reads the verdict.
    - **Step 3.** If the verdict is useful, sends prompt 2 to get the summary and the quiz. If it's entertainment, it stops there.
-4. **Quiz breaks** (see [below](#quiz-breaks)) pause the video every ~40 minutes and offer a quiz on that stretch.
+4. **Quiz breaks** (see [below](#quiz-breaks)) offer a quiz on each ~40-minute stretch of the video once you reach its end.
 5. **Coming back to the chat:**
    - **End-of-video card.** When a useful video has less than 15 seconds left, a card appears on YouTube with a button that opens the Gemini chat for that video.
    - **Popup.** Clicking the extension icon shows every processed video with its status and an **Open chat** button. So you can still reach the chat if you closed the card.
@@ -27,7 +27,7 @@ Useful videos get a quiz break every ~40 minutes of the video timeline. Both num
 
 **What triggers a break.** A break fires when the playhead moves forward past it, either by playing or by seeking ahead:
 
-- **When it fires,** the video pauses and a card offers **Take the quiz** and **Keep watching**. Take the quiz sends prompt 3 to the video's Gemini chat and switches to it; the prompt asks for a quiz on that stretch only, with its time range and chapter titles.
+- **When it fires,** a card appears in the top right corner, next to the extension icon, with **Take the quiz** and **Later**. The video keeps playing, and the card stays until you click one of them. Take the quiz sends prompt 3 to the video's Gemini chat and switches to it; the prompt asks for a quiz on that stretch only, with its time range and chapter titles.
 - **One seek across several breaks** shows one card, covering everything from the first skipped break's stretch.
 - **Breaks need the verdict.** A break reached before the video passed the watch threshold and Gemini called it useful does not fire. With the defaults (10 and 40 minutes) the verdict is long in place by the first break.
 - **Seeking backward never fires a break,** and each break fires once per page load.
@@ -82,7 +82,7 @@ The classifier looks for the words `USEFUL` and `ENTERTAINMENT` in Gemini's answ
 manifest.json       MV3 manifest: permissions, content scripts, popup
 defaults.js         Default prompts and shared storage helpers
 background.js       Service worker: opens the Gemini tab, injects the script, stores per-video state
-content_yt.js       YouTube: watch time, quiz breaks, pause cards
+content_yt.js       YouTube: watch time, quiz breaks, quiz cards
 content_gemini.js   Gemini: sends prompts, waits for answers, classifies
 popup.html/.js      Video history and prompt settings
 ```
