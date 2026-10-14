@@ -370,13 +370,23 @@
 
   let currentVideoUrl = null;
 
+  // After an extension reload this script is orphaned and sendMessage throws
+  // synchronously ("Extension context invalidated"). The chat itself is still
+  // fine, so the prompts already handed over keep going; only the result is
+  // lost, and the background marks such videos as failed on reload.
+  function notify(message) {
+    try {
+      chrome.runtime.sendMessage(message).catch(() => {});
+    } catch {
+      showStatus('the extension was reloaded: this result is not saved, the chat goes on');
+    }
+  }
+
   // chatUrl is the conversation address (Gemini switches to /app/<id> after
   // the first message), so the user can get back to this exact chat.
   function report(status, detail) {
     showStatus(`result: ${status}${detail ? `\n${detail}` : ''}`);
-    chrome.runtime
-      .sendMessage({ type: 'GEMINI_RESULT', status, detail, videoUrl: currentVideoUrl, chatUrl: location.href })
-      .catch(() => {});
+    notify({ type: 'GEMINI_RESULT', status, detail, videoUrl: currentVideoUrl, chatUrl: location.href });
   }
 
   async function run({ videoUrl, prompt_1, prompt_2 }) {
@@ -419,7 +429,7 @@
   async function sendExtraPrompt({ prompt, label, meta }) {
     const result = (status, detail) => {
       showStatus(`${label}: ${status}${detail ? `\n${detail}` : ''}`);
-      chrome.runtime.sendMessage({ type: 'GEMINI_PROMPT_RESULT', label, status, detail, meta }).catch(() => {});
+      notify({ type: 'GEMINI_PROMPT_RESULT', label, status, detail, meta });
     };
     try {
       // A chat reopened from its URL renders its history a moment after the

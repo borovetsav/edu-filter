@@ -112,6 +112,7 @@ All selectors are listed at the top of `content_gemini.js`, from the most specif
   - in the YouTube and Gemini tabs, open DevTools (F12) → Console and filter by `[EduFilter]`. For a video with quiz breaks, the YouTube log lists them;
   - for the background part, go to `chrome://extensions` → Edu Filter → **service worker**.
 - **No Gemini tab opens.** Either the video is already in the history (clear it, see [Usage](#usage)), or the YouTube tab wasn't reloaded after you reloaded the extension. In the second case the old script on the page is disconnected and does nothing.
+- **"Extension context invalidated" in the Gemini status panel.** The extension was reloaded while that tab was working. The script still finishes the prompts it already has, but their results are not saved: after a reload, videos and quizzes that were in progress are marked as failed, and **Send again** in the popup restarts a video.
 - **"Timed out waiting for the input field".** You're signed out of Gemini, or a dialog is covering the input field.
 
 ## Limitations

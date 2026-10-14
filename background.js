@@ -114,6 +114,32 @@ async function ensureGeminiScript(tabId) {
 
 // ---------- Main flow ----------
 
+const IN_PROGRESS = ['PENDING', 'USEFUL'];
+const INTERRUPTED =
+  'The extension was reloaded while this video was being processed. Open the chat to see how far Gemini got, or click Send again.';
+
+// An update or reload orphans the Gemini scripts, so the results of videos
+// and quizzes in flight never arrive. Mark them as failed instead of leaving
+// them "in progress" forever; Send again in the popup restarts a video.
+async function failInterruptedVideos() {
+  const all = await chrome.storage.local.get(null);
+  const patch = {};
+  for (const [key, state] of Object.entries(all)) {
+    if (!key.startsWith(VIDEO_KEY_PREFIX)) continue;
+    const quizzes = Object.fromEntries(
+      Object.entries(state.quizzes ?? {}).map(([i, s]) => [i, s === 'REQUESTED' ? 'ERROR' : s])
+    );
+    const interrupted = IN_PROGRESS.includes(state.status);
+    if (interrupted || JSON.stringify(quizzes) !== JSON.stringify(state.quizzes ?? {})) {
+      patch[key] = { ...state, quizzes, ...(interrupted && { status: 'ERROR', detail: INTERRUPTED }) };
+    }
+  }
+  if (Object.keys(patch).length) {
+    await chrome.storage.local.set(patch);
+    console.log('[EduFilter] marked as interrupted:', Object.keys(patch));
+  }
+}
+
 async function processVideo(videoUrl, videoId, title) {
   if (await getVideoState(videoId)) {
     console.log('[EduFilter] already processed:', videoId);
@@ -236,6 +262,7 @@ const PROMPT_3_DEFAULT_1_1 =
 // - From 1.1: see PROMPT_3_DEFAULT_1_1.
 chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (reason !== 'update') return;
+  await failInterruptedVideos();
   const { prompt_1, prompt_2, prompt_3 } = await chrome.storage.local.get(['prompt_1', 'prompt_2', 'prompt_3']);
   const stale = [];
   if (isOlderThan(previousVersion, '1.1.0')) {
