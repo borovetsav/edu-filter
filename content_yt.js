@@ -41,6 +41,7 @@
   const triggered = new Set(); // videoIds already sent to the background
   const reminded = new Set(); // videoIds that got the end-of-video card
   const shownParts = new Set(); // partKey()s whose break already fired
+  const caughtUp = new Set(); // videoIds checked for breaks passed before the verdict
 
   // After the extension is reloaded or updated, this copy of the script keeps
   // running in tabs that were already open, but chrome.runtime is gone and
@@ -277,13 +278,30 @@
   // forward past a break fires it, even by skipping ahead; moving backward
   // never does, and each break fires once. A seek across several breaks
   // shows one card covering everything from the first skipped break's part.
-  // The position the page opens at (e.g. YouTube resuming) is not a move.
+  // The position the page opens at (e.g. YouTube resuming) is not a move;
+  // checkMissedParts() covers it.
   function checkPartBoundary(video, prev, pos) {
     if (prev == null || pos <= prev || !isUseful()) return;
 
-    const crossed = (getParts(video) ?? []).filter(
-      (part) => !shownParts.has(partKey(part)) && prev < part.end && pos >= part.end
-    );
+    offerParts((getParts(video) ?? []).filter((part) => prev < part.end && pos >= part.end));
+  }
+
+  // Breaks passed before the video was known to be useful never fired: the
+  // verdict arrives minutes after the video was sent to Gemini, and the page
+  // may open (or resume) past them. Once the breaks are known, those passed
+  // and not yet requested (videoState.quizzes) are offered in one card.
+  function checkMissedParts(video, pos) {
+    if (!videoId || caughtUp.has(videoId) || !isUseful()) return;
+    getParts(video);
+    if (parts === undefined) return; // not final yet (e.g. chapters still loading)
+    caughtUp.add(videoId);
+    const requested = videoState?.quizzes ?? {};
+    offerParts((parts ?? []).filter((part) => pos >= part.end && requested[part.index] == null));
+  }
+
+  // One card for one or more parts; several are merged into one stretch.
+  function offerParts(candidates) {
+    const crossed = candidates.filter((part) => !shownParts.has(partKey(part)));
     if (!crossed.length) return;
     crossed.forEach((part) => shownParts.add(partKey(part)));
 
@@ -294,6 +312,7 @@
       ...last,
       start: crossed[0].start,
       chapters: crossed.flatMap((part) => part.chapters),
+      covers: crossed.map((part) => part.index),
     });
   }
 
@@ -467,6 +486,7 @@
         maybeTrigger(video);
         refreshState();
         checkPartBoundary(video, lastPos, video.currentTime);
+        checkMissedParts(video, video.currentTime);
         lastPos = video.currentTime;
         maybeShowReminder(video);
         break;

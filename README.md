@@ -29,9 +29,8 @@ Useful videos get a quiz break every ~40 minutes of the video timeline. Both num
 
 - **When it fires,** a card appears in the top right corner, next to the extension icon, with **Summary and quiz** and **Later**. The video keeps playing, and the card stays until you click one of them. Summary and quiz sends prompt 2 to the video's Gemini chat and switches to it; the prompt asks for a summary of that stretch only, broken down by timestamps, and a 5-question quiz on it, with the time range and chapter titles.
 - **One seek across several breaks** shows one card, covering everything from the first skipped break's stretch.
-- **Breaks need the verdict.** A break reached before the video passed the watch threshold and Gemini called it useful does not fire. With the defaults (10 and 40 minutes) the verdict is long in place by the first break.
-- **Seeking backward never fires a break,** and each break fires once per page load.
-- **The position a video opens at** (YouTube resuming where you left off, or a `&t=` link) is not a move, so no card appears on load.
+- **Breaks passed before the verdict are caught up.** The verdict comes minutes after the watch threshold, and a video may open (or resume) past some breaks. As soon as the video is known to be useful, one card offers everything already passed that has no summary and quiz yet. For example, opening a video at 1:13:00 with 30-minute breaks offers 0:00 – 1:00:00 right away.
+- **Seeking backward never fires a break,** and each break fires once per page load. Stretches whose summary and quiz were already requested are not offered again when you reopen the video.
 
 Example: the 1:56 lecture [*Let's build GPT*](https://www.youtube.com/watch?v=kCc8FmEb1nY) with the defaults gets breaks at 38:00 and 1:16:56 (chapter starts closest to 40:00 and 1:18:00), plus the end. With "every 30 minutes, ±5" the breaks are at 34:53, 1:02:00 and 1:32:51.
 

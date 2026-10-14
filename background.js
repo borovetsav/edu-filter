@@ -221,21 +221,26 @@ async function requestPartQuiz(videoId, part) {
     url: state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`,
   });
 
-  await patchVideoState(videoId, { quizzes: { ...state.quizzes, [part.index]: 'REQUESTED' } });
+  // A merged card covers several parts; all of them count as requested.
+  const partIndexes = part.covers ?? [part.index];
+  await patchVideoState(videoId, { quizzes: { ...state.quizzes, ...statusFor(partIndexes, 'REQUESTED') } });
   await chrome.tabs.sendMessage(tab.id, {
     type: 'SEND_PROMPT',
     prompt,
     label: `summary and quiz for part ${part.index + 1}/${part.total}`,
-    meta: { videoId, partIndex: part.index },
+    meta: { videoId, partIndexes },
   });
 }
 
+const statusFor = (indexes, status) => Object.fromEntries(indexes.map((i) => [i, status]));
+
 async function onPromptResult(msg) {
   console.log('[EduFilter] prompt result:', msg.label, msg.status, msg.detail ?? '');
-  const { videoId, partIndex } = msg.meta ?? {};
-  if (!videoId || partIndex == null) return;
+  const { videoId, partIndexes, partIndex } = msg.meta ?? {};
+  const indexes = partIndexes ?? (partIndex != null ? [partIndex] : []);
+  if (!videoId || !indexes.length) return;
   const state = await getVideoState(videoId);
-  await patchVideoState(videoId, { quizzes: { ...state?.quizzes, [partIndex]: msg.status } });
+  await patchVideoState(videoId, { quizzes: { ...state?.quizzes, ...statusFor(indexes, msg.status) } });
 }
 
 // ---------- Wiring ----------
