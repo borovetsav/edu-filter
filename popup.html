@@ -4,73 +4,173 @@
   <meta charset="utf-8">
   <title>Edu Filter</title>
   <style>
-    body { width: 420px; margin: 0; padding: 14px; font: 13px/1.4 system-ui, sans-serif; }
-    h1 { font-size: 15px; margin: 0 0 10px; }
-    h2 { font-size: 14px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline; }
-    label { display: block; font-weight: 600; margin: 10px 0 4px; }
-    .hint { font-weight: 400; color: #666; }
-    textarea { width: 100%; box-sizing: border-box; min-height: 90px; resize: vertical; font: inherit; padding: 6px; }
-    .inline { display: flex; align-items: center; gap: 6px; font-weight: 600; margin: 10px 0 0; }
-    .inline input { width: 64px; font: inherit; padding: 3px 6px; }
-    .inline .hint { font-weight: 400; }
-    .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
-    button { padding: 6px 12px; cursor: pointer; }
-    #status { color: #188038; }
+    :root {
+      --bg: #f6f7fb;
+      --surface: #ffffff;
+      --text: #1f2330;
+      --muted: #6b7180;
+      --border: #e6e8ef;
+      --brand: #5b4ff5;
+      --brand-hover: #4a3ee0;
+      --green: #12805c;
+      --green-soft: #e3f5ee;
+      --blue: #1f6feb;
+      --blue-soft: #e5efff;
+      --red: #c62f3a;
+      --red-soft: #fde8ea;
+      --grey-soft: #eef0f4;
+      --shadow: 0 1px 2px rgba(20, 24, 40, .06), 0 2px 8px rgba(20, 24, 40, .05);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #15161b;
+        --surface: #1f2128;
+        --text: #eceef3;
+        --muted: #9aa0ad;
+        --border: #2d3039;
+        --brand: #8b80ff;
+        --brand-hover: #9d94ff;
+        --green: #4cc79a;
+        --green-soft: #173a2e;
+        --blue: #7aa7ff;
+        --blue-soft: #1c2d4d;
+        --red: #ff7b84;
+        --red-soft: #45212a;
+        --grey-soft: #2a2d35;
+        --shadow: none;
+      }
+    }
 
-    #videos { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
-    #videos li { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid #e3e3e3; }
+    * { box-sizing: border-box; }
+    body { width: 400px; margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    button { font: inherit; cursor: pointer; }
+
+    /* Header */
+    header {
+      padding: 16px 18px 18px; color: #fff;
+      background: linear-gradient(135deg, #5b4ff5 0%, #8a3ffc 60%, #c03fd8 100%);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand img { width: 34px; height: 34px; border-radius: 9px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .35), 0 2px 8px rgba(0, 0, 0, .2); }
+    .brand h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: .1px; }
+    .brand p { margin: 0; font-size: 12px; opacity: .85; }
+    .stats { display: flex; gap: 8px; margin-top: 14px; }
+    .stat { flex: 1; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .16); }
+    .stat b { display: block; font-size: 18px; line-height: 1.15; }
+    .stat span { font-size: 11px; opacity: .9; }
+
+    main { padding: 14px 14px 16px; }
+    .section-title { display: flex; justify-content: space-between; align-items: center; margin: 2px 4px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+    #clear { padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+    #clear:hover { color: var(--red); }
+
+    /* Videos */
+    #videos { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    #videos li { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
     .info { flex: 1; min-width: 0; }
-    .info a { display: block; color: inherit; font-weight: 500; text-decoration: none;
-              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .info a:hover { text-decoration: underline; }
-    .meta { color: #666; font-size: 12px; }
-    .meta.ready { color: #188038; }
-    .meta.error { color: #c5221f; }
-    .open-chat { flex: none; padding: 5px 10px; border: 0; border-radius: 14px; background: #1a73e8; color: #fff; }
-    .open-chat:hover { background: #1765cc; }
-    .buttons { flex: none; display: flex; flex-direction: column; gap: 4px; }
-    .retry { padding: 4px 10px; border: 1px solid #c4c7c5; border-radius: 14px; background: #fff; font-size: 12px; }
-    .retry:hover { background: #f1f3f4; }
-    .empty { color: #666; margin: 0; }
-    #clear { padding: 0; border: 0; background: none; color: #666; font-size: 12px; text-decoration: underline; }
-    details { margin-top: 14px; }
-    summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+    .info a { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: inherit; font-weight: 600; text-decoration: none; }
+    .info a:hover { color: var(--brand); }
+    .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 5px; color: var(--muted); font-size: 11.5px; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-weight: 600; font-size: 11px; background: var(--grey-soft); color: var(--muted); }
+    .chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .chip.useful { background: var(--green-soft); color: var(--green); }
+    .chip.pending { background: var(--blue-soft); color: var(--blue); }
+    .chip.pending::before { animation: pulse 1.2s ease-in-out infinite; }
+    .chip.error { background: var(--red-soft); color: var(--red); }
+    @keyframes pulse { 50% { opacity: .25; } }
+    .detail { margin-top: 5px; font-size: 11.5px; color: var(--red); }
+    .buttons { flex: none; display: flex; flex-direction: column; gap: 5px; }
+    .open-chat { padding: 6px 12px; border: 0; border-radius: 999px; background: var(--brand); color: #fff; font-weight: 600; font-size: 12px; }
+    .open-chat:hover { background: var(--brand-hover); }
+    .retry { padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text); font-size: 12px; }
+    .retry:hover { background: var(--grey-soft); }
+    .retry:disabled { opacity: .5; cursor: default; }
+
+    .empty { margin: 0; padding: 22px 18px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; }
+    .empty b { display: block; margin-bottom: 4px; color: var(--text); font-size: 14px; }
+
+    /* Settings */
+    details { margin-top: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+    summary { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; cursor: pointer; font-weight: 600; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: ''; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform .15s; margin-right: 3px; }
+    details[open] summary::after { transform: rotate(-135deg); }
+    .settings { padding: 2px 14px 14px; border-top: 1px solid var(--border); }
+    .group-title { margin: 14px 0 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+    .field { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
+    .field label { flex: 1; }
+    .num { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+    .num input { width: 58px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; text-align: right; }
+    input:focus, textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: transparent; }
+    .hint { margin: 4px 0 0; font-size: 11.5px; color: var(--muted); }
+    .prompt-label { display: block; margin: 10px 0 5px; font-weight: 600; }
+    .prompt-label .hint { display: inline; font-weight: 400; }
+    textarea { width: 100%; min-height: 84px; resize: vertical; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-family: inherit; font-size: 12px; line-height: 1.45; }
+    .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+    .row button { padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 12px; }
+    #save { border: 0; background: var(--brand); color: #fff; }
+    #save:hover { background: var(--brand-hover); }
+    #reset { border: 1px solid var(--border); background: transparent; color: var(--text); }
+    #reset:hover { background: var(--grey-soft); }
+    #status { color: var(--green); font-size: 12px; font-weight: 600; }
   </style>
 </head>
 <body>
-  <h1>Edu Filter</h1>
-
-  <section>
-    <h2>Videos <button id="clear" hidden>clear history</button></h2>
-    <ul id="videos"></ul>
-    <p id="empty" class="empty">Nothing here yet. Videos you watched past the threshold show up here, with a link to the chat with their summary and quiz.</p>
-  </section>
-
-  <details>
-    <summary>Settings</summary>
-
-    <label class="inline" for="watch_threshold_min">Send a video to Gemini after
-      <input id="watch_threshold_min" type="number" min="1" step="1"> minutes of watching</label>
-    <p class="hint">Only videos you actually keep watching get a summary and quizzes. A video shorter than that counts once 90% of it was watched.</p>
-
-    <label class="inline" for="quiz_interval_min">Quiz every
-      <input id="quiz_interval_min" type="number" min="5" step="5"> minutes of video</label>
-    <label class="inline" for="quiz_snap_min">Move the break to a chapter boundary within &plusmn;
-      <input id="quiz_snap_min" type="number" min="0" step="1"> minutes</label>
-    <p class="hint">A break fires when the video reaches it, by playing or by skipping ahead. At each break you get a summary and a quiz for the stretch you just watched. Videos shorter than about 1.5&times; the interval get one for the whole video, near its end.</p>
-
-    <label for="prompt_1">Prompt 1: classification <span class="hint">(the video URL is appended)</span></label>
-    <textarea id="prompt_1"></textarea>
-
-    <label for="prompt_3">Prompt 2: summary and quiz for a stretch <span class="hint">(filled in automatically: {start} {end} {chapters} {url})</span></label>
-    <textarea id="prompt_3"></textarea>
-
-    <div class="row">
-      <button id="save">Save</button>
-      <button id="reset">Reset to defaults</button>
-      <span id="status"></span>
+  <header>
+    <div class="brand">
+      <img src="icons/icon-128.png" alt="">
+      <div>
+        <h1>Edu Filter</h1>
+        <p>YouTube lectures &rarr; summaries and quizzes</p>
+      </div>
     </div>
-  </details>
+    <div class="stats">
+      <div class="stat"><b id="stat-useful">0</b><span>useful videos</span></div>
+      <div class="stat"><b id="stat-quizzes">0</b><span>parts reviewed</span></div>
+      <div class="stat"><b id="stat-pending">0</b><span>in progress</span></div>
+    </div>
+  </header>
+
+  <main>
+    <div class="section-title">Videos <button id="clear" hidden>clear history</button></div>
+    <ul id="videos"></ul>
+    <p id="empty" class="empty"><b>Nothing here yet</b>Keep watching a lecture and it shows up here, with a link to its Gemini chat.</p>
+
+    <details>
+      <summary>Settings</summary>
+      <div class="settings">
+        <div class="group-title">When to send a video</div>
+        <div class="field">
+          <label for="watch_threshold_min">Send to Gemini after watching</label>
+          <span class="num"><input id="watch_threshold_min" type="number" min="1" step="1"> min</span>
+        </div>
+        <p class="hint">Only videos you keep watching get summaries and quizzes. A shorter video counts once 90% of it was watched.</p>
+
+        <div class="group-title">Quiz breaks</div>
+        <div class="field">
+          <label for="quiz_interval_min">Quiz every</label>
+          <span class="num"><input id="quiz_interval_min" type="number" min="5" step="5"> min</span>
+        </div>
+        <div class="field">
+          <label for="quiz_snap_min">Snap to a chapter within &plusmn;</label>
+          <span class="num"><input id="quiz_snap_min" type="number" min="0" step="1"> min</span>
+        </div>
+        <p class="hint">A break fires when the video reaches it, by playing or by skipping ahead. Videos shorter than about 1.5&times; the interval get one card for the whole video, near its end.</p>
+
+        <div class="group-title">Prompts</div>
+        <label class="prompt-label" for="prompt_1">Classification <span class="hint">(the video URL is appended)</span></label>
+        <textarea id="prompt_1"></textarea>
+        <label class="prompt-label" for="prompt_3">Summary and quiz for a stretch <span class="hint">({start} {end} {chapters} {url})</span></label>
+        <textarea id="prompt_3"></textarea>
+
+        <div class="row">
+          <button id="save">Save</button>
+          <button id="reset">Reset to defaults</button>
+          <span id="status"></span>
+        </div>
+      </div>
+    </details>
+  </main>
 
   <script type="module" src="popup.js"></script>
 </body>

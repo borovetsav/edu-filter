@@ -54,13 +54,14 @@ const list = document.getElementById('videos');
 const empty = document.getElementById('empty');
 const clearBtn = document.getElementById('clear');
 
-const STATUS_TEXT = {
-  PENDING: { text: 'Gemini is analyzing the video...' },
-  USEFUL: { text: 'Useful: a summary and quiz at each quiz break', cls: 'ready' },
+// Status chip: label and color class.
+const STATUS_CHIP = {
+  PENDING: { text: 'Analyzing', cls: 'pending' },
+  USEFUL: { text: 'Useful', cls: 'useful' },
   // Videos processed before 1.5, which also had a whole-video summary.
-  SUMMARY_DONE: { text: 'Useful: summary and quiz ready', cls: 'ready' },
-  FUN: { text: 'Gemini judged it entertainment: no summary or quizzes' },
-  UNKNOWN: { text: "Couldn't read Gemini's verdict", cls: 'error' },
+  SUMMARY_DONE: { text: 'Useful', cls: 'useful' },
+  FUN: { text: 'Entertainment', cls: '' },
+  UNKNOWN: { text: 'No verdict', cls: 'error' },
   ERROR: { text: 'Error', cls: 'error' },
 };
 
@@ -77,18 +78,21 @@ function formatDate(ts) {
   return new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-// Counts only the parts whose quiz was requested; a part is listed once the
-// user clicks "Take the quiz" on its card.
-function quizSummary(quizzes) {
-  const values = Object.values(quizzes ?? {});
-  if (!values.length) return '';
-  const count = (status) => values.filter((s) => s === status).length;
+const countQuizzes = (quizzes, status) => Object.values(quizzes ?? {}).filter((s) => s === status).length;
+
+// Counts only the stretches whose summary and quiz were requested, from the
+// card at a quiz break.
+function quizSummary(v) {
+  const done = countQuizzes(v.quizzes, 'DONE');
+  const requested = countQuizzes(v.quizzes, 'REQUESTED');
+  const failed = countQuizzes(v.quizzes, 'ERROR');
   const parts = [
-    count('DONE') && `${count('DONE')} ready`,
-    count('REQUESTED') && `${count('REQUESTED')} in progress`,
-    count('ERROR') && `${count('ERROR')} failed`,
+    done && `${done} reviewed`,
+    requested && `${requested} in progress`,
+    failed && `${failed} failed`,
   ].filter(Boolean);
-  return `stretches: ${parts.join(', ')}`;
+  if (parts.length) return parts.join(', ');
+  return v.verdict === 'USEFUL' ? 'quiz at each break' : '';
 }
 
 function renderVideo(v) {
@@ -103,15 +107,20 @@ function renderVideo(v) {
   link.textContent = v.title || v.videoId;
   link.title = link.textContent;
 
-  const s = STATUS_TEXT[v.status] ?? { text: v.status };
+  const s = STATUS_CHIP[v.status] ?? { text: v.status, cls: '' };
   const meta = document.createElement('div');
-  meta.className = `meta ${s.cls ?? ''}`;
-  meta.textContent = [s.text, quizSummary(v.quizzes), formatDate(v.createdAt)].filter(Boolean).join(' · ');
+  meta.className = 'meta';
+  const chip = document.createElement('span');
+  chip.className = `chip ${s.cls}`;
+  chip.textContent = s.text;
+  const rest = document.createElement('span');
+  rest.textContent = [quizSummary(v), formatDate(v.createdAt)].filter(Boolean).join(' · ');
+  meta.append(chip, rest);
 
   info.append(link, meta);
   if ((v.status === 'ERROR' || v.status === 'UNKNOWN') && v.detail) {
     const detail = document.createElement('div');
-    detail.className = 'meta error';
+    detail.className = 'detail';
     detail.textContent = v.status === 'UNKNOWN' ? `Gemini replied: "${v.detail}"` : v.detail;
     info.append(detail);
   }
@@ -148,8 +157,19 @@ function renderVideo(v) {
   return li;
 }
 
+function renderStats(videos) {
+  const set = (id, value) => (document.getElementById(id).textContent = value);
+  set('stat-useful', videos.filter((v) => v.verdict === 'USEFUL').length);
+  set('stat-quizzes', videos.reduce((n, v) => n + countQuizzes(v.quizzes, 'DONE'), 0));
+  set(
+    'stat-pending',
+    videos.reduce((n, v) => n + (v.status === 'PENDING' ? 1 : 0) + countQuizzes(v.quizzes, 'REQUESTED'), 0)
+  );
+}
+
 async function renderVideos() {
   const videos = await getVideos();
+  renderStats(videos);
   list.replaceChildren(...videos.map(renderVideo));
   empty.hidden = videos.length > 0;
   clearBtn.hidden = videos.length === 0;

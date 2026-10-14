@@ -328,30 +328,53 @@
   const CARD_STYLE = `
     .card {
       position: fixed; right: 16px; top: 68px; z-index: 2147483647;
-      width: 340px; padding: 16px 18px; box-sizing: border-box;
-      background: #fff; color: #1f1f1f; border-radius: 12px;
-      box-shadow: 0 8px 28px rgba(0,0,0,.28);
+      width: 344px; padding: 18px 18px 16px; box-sizing: border-box; overflow: hidden;
+      background: #fff; color: #1f2330; border-radius: 16px;
+      box-shadow: 0 12px 32px rgba(20,24,40,.28), 0 0 0 1px rgba(20,24,40,.06);
       font: 14px/1.45 Roboto, Arial, sans-serif;
       animation: in .25s ease-out;
     }
+    .card::before {
+      content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px;
+      background: linear-gradient(90deg, #5b4ff5, #8a3ffc 60%, #c03fd8);
+    }
     @keyframes in { from { opacity: 0; transform: translateY(-12px); } }
-    .title { font-weight: 600; font-size: 15px; margin: 0 24px 6px 0; }
-    .text { margin: 0 0 12px; color: #444; }
-    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .brand {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+      font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: #6b5cf6;
+    }
+    .logo {
+      width: 16px; height: 16px; border-radius: 5px; position: relative;
+      background: linear-gradient(135deg, #5b4ff5, #8a3ffc 60%, #c03fd8);
+    }
+    .logo::after {
+      content: ''; position: absolute; left: 6px; top: 4px;
+      border-left: 6px solid #fff; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+    }
+    .title { font-weight: 700; font-size: 16px; margin: 0 24px 6px 0; }
+    .text { margin: 0 0 10px; color: #4a5060; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
     .action {
-      border: 0; border-radius: 18px; padding: 8px 16px; cursor: pointer;
-      background: #e8eaed; color: #1f1f1f; font: inherit; font-weight: 500;
+      border: 0; border-radius: 999px; padding: 8px 16px; cursor: pointer;
+      background: #eef0f4; color: #1f2330; font: inherit; font-weight: 600;
     }
-    .action.primary { background: #1a73e8; color: #fff; }
-    .action.primary:hover { background: #1765cc; }
+    .action:hover { background: #e2e5ec; }
+    .action.primary {
+      background: linear-gradient(135deg, #5b4ff5, #8a3ffc); color: #fff;
+      box-shadow: 0 2px 8px rgba(91,79,245,.35);
+    }
+    .action.primary:hover { filter: brightness(1.08); }
     .close {
-      position: absolute; top: 8px; right: 10px; border: 0; background: none;
-      font-size: 20px; line-height: 1; color: #777; cursor: pointer;
+      position: absolute; top: 12px; right: 12px; width: 26px; height: 26px; border: 0; border-radius: 50%;
+      background: none; font-size: 18px; line-height: 1; color: #8a8f9c; cursor: pointer;
     }
+    .close:hover { background: #eef0f4; }
     @media (prefers-color-scheme: dark) {
-      .card { background: #282828; color: #f1f1f1; }
-      .text { color: #bbb; }
-      .action { background: #3c4043; color: #f1f1f1; }
+      .card { background: #1f2128; color: #eceef3; box-shadow: 0 12px 32px rgba(0,0,0,.5), 0 0 0 1px #2d3039; }
+      .brand { color: #a39bff; }
+      .text { color: #b3b8c4; }
+      .action { background: #2a2d35; color: #eceef3; }
+      .action:hover, .close:hover { background: #343844; }
     }
   `;
 
@@ -382,7 +405,9 @@
       buttons.append(button);
     }
 
-    card.append(close, el('div', 'title', title), ...lines.map((line) => el('p', 'text', line)), buttons);
+    const brand = el('div', 'brand');
+    brand.append(el('span', 'logo'), 'Edu Filter');
+    card.append(close, brand, el('div', 'title', title), ...lines.map((line) => el('p', 'text', line)), buttons);
     root.appendChild(card);
 
     // In fullscreen only the fullscreen element is visible, so the card goes there.
