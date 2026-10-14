@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="250" viewBox="0 0 960 250" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5f6368"/>
+    </marker>
+  </defs>
+  <rect width="960" height="250" rx="16" fill="#ffffff"/>
+
+  <!-- 1. Watch -->
+  <rect x="24" y="40" width="190" height="112" rx="14" fill="#fdecea" stroke="#f28b82"/>
+  <text x="119" y="76" text-anchor="middle" font-size="15" font-weight="700" fill="#202124">1. You watch</text>
+  <text x="119" y="102" text-anchor="middle" font-size="13" fill="#3c4043">a YouTube video for</text>
+  <text x="119" y="121" text-anchor="middle" font-size="13" fill="#3c4043">N minutes (default 10)</text>
+
+  <!-- 2. Verdict -->
+  <rect x="262" y="40" width="190" height="112" rx="14" fill="#e8f0fe" stroke="#8ab4f8"/>
+  <text x="357" y="76" text-anchor="middle" font-size="15" font-weight="700" fill="#202124">2. Gemini decides</text>
+  <text x="357" y="102" text-anchor="middle" font-size="13" fill="#3c4043">in a background tab:</text>
+  <text x="357" y="121" text-anchor="middle" font-size="13" font-weight="600" fill="#1a73e8">USEFUL or ENTERTAINMENT</text>
+
+  <!-- 3. Breaks -->
+  <rect x="500" y="40" width="190" height="112" rx="14" fill="#fef7e0" stroke="#fdd663"/>
+  <text x="595" y="76" text-anchor="middle" font-size="15" font-weight="700" fill="#202124">3. Quiz breaks</text>
+  <text x="595" y="102" text-anchor="middle" font-size="13" fill="#3c4043">every ~40 min of the video,</text>
+  <text x="595" y="121" text-anchor="middle" font-size="13" fill="#3c4043">snapped to chapters</text>
+
+  <!-- 4. Summary and quiz -->
+  <rect x="738" y="40" width="198" height="112" rx="14" fill="#e6f4ea" stroke="#81c995"/>
+  <text x="837" y="76" text-anchor="middle" font-size="15" font-weight="700" fill="#202124">4. Summary + quiz</text>
+  <text x="837" y="102" text-anchor="middle" font-size="13" fill="#3c4043">for that stretch only,</text>
+  <text x="837" y="121" text-anchor="middle" font-size="13" fill="#3c4043">in the same Gemini chat</text>
+
+  <line x1="216" y1="96" x2="258" y2="96" stroke="#5f6368" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="454" y1="96" x2="496" y2="96" stroke="#5f6368" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="475" y="86" text-anchor="middle" font-size="11" fill="#188038">useful</text>
+  <line x1="692" y1="96" x2="734" y2="96" stroke="#5f6368" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="713" y="86" text-anchor="middle" font-size="11" fill="#5f6368">click</text>
+
+  <!-- Entertainment branch -->
+  <path d="M357,154 L357,186" fill="none" stroke="#9aa0a6" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+  <text x="357" y="208" text-anchor="middle" font-size="13" fill="#5f6368">entertainment: stops here</text>
+
+  <!-- Loop back -->
+  <path d="M837,154 L837,214 L595,214 L595,158" fill="none" stroke="#9aa0a6" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="716" y="232" text-anchor="middle" font-size="12" fill="#5f6368">next break: the next stretch</text>
+</svg>
