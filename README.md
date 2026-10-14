@@ -58,9 +58,9 @@ Watch YouTube as usual. Once a video passes the watch threshold:
   - *Summary and quiz ready* — both are done;
   - an error, with the reason.
 - For videos with quiz breaks, the popup also shows how many break quizzes are ready.
-- Entertainment videos don't appear in the list.
+- Entertainment videos are listed too, so a wrong verdict is easy to spot.
 
-Each video is processed only once, and the history is kept across browser restarts. To process a video again, open the popup and click **clear history** twice. Then reload the YouTube tab.
+Each video is processed only once, and the history is kept across browser restarts. If Gemini judged a video as entertainment, or its processing failed, click **Send again** next to it in the popup: the video goes to Gemini again in a new chat, and once it is judged useful its quiz breaks appear on the open YouTube tab within a few seconds. To start over completely, click **clear history** twice and reload the YouTube tab.
 
 ### Customizing prompts
 

@@ -152,7 +152,8 @@
   async function refreshState() {
     const id = videoId;
     const now = performance.now();
-    if (!id || videoState?.verdict === 'FUN' || now - lastStateFetch < STATE_REFRESH_MS) return;
+    // FUN is polled too: the video may be sent to Gemini again from the popup.
+    if (!id || now - lastStateFetch < STATE_REFRESH_MS) return;
     lastStateFetch = now;
     const state = await send({ type: 'GET_VIDEO_STATUS', videoId: id }).catch(() => null);
     if (id === videoId) videoState = state;

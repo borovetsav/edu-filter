@@ -58,6 +58,7 @@ const STATUS_TEXT = {
   PENDING: { text: 'Gemini is analyzing the video...' },
   USEFUL: { text: 'Summary and quiz in progress...' },
   SUMMARY_DONE: { text: 'Summary and quiz ready', cls: 'ready' },
+  FUN: { text: 'Gemini judged it entertainment: no summary or quizzes' },
   UNKNOWN: { text: "Couldn't read Gemini's verdict", cls: 'error' },
   ERROR: { text: 'Error', cls: 'error' },
 };
@@ -67,9 +68,6 @@ async function getVideos() {
   return Object.entries(all)
     .filter(([key]) => key.startsWith(VIDEO_KEY_PREFIX))
     .map(([key, state]) => ({ videoId: key.slice(VIDEO_KEY_PREFIX.length), ...state }))
-    // Entertainment videos are hidden; failures (UNKNOWN, ERROR) are always
-    // shown so it is clear what went wrong.
-    .filter((v) => v.status !== 'FUN')
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 }
 
@@ -118,6 +116,9 @@ function renderVideo(v) {
   }
   li.append(info);
 
+  const buttons = document.createElement('div');
+  buttons.className = 'buttons';
+
   // The chat is reachable as soon as the Gemini tab exists, even before the verdict.
   if (v.tabId != null || v.chatUrl) {
     const open = document.createElement('button');
@@ -127,8 +128,22 @@ function renderVideo(v) {
       await chrome.runtime.sendMessage({ type: 'OPEN_GEMINI_CHAT', videoId: v.videoId });
       window.close();
     });
-    li.append(open);
+    buttons.append(open);
   }
+
+  // A video is processed once; this is the way to get another verdict.
+  if (v.status === 'FUN' || v.status === 'UNKNOWN' || v.status === 'ERROR') {
+    const retry = document.createElement('button');
+    retry.className = 'retry';
+    retry.textContent = 'Send again';
+    retry.title = 'Ask Gemini about this video again';
+    retry.addEventListener('click', () => {
+      retry.disabled = true;
+      chrome.runtime.sendMessage({ type: 'RECHECK_VIDEO', videoId: v.videoId });
+    });
+    buttons.append(retry);
+  }
+  if (buttons.childElementCount) li.append(buttons);
   return li;
 }
 

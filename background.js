@@ -130,6 +130,15 @@ async function processVideo(videoUrl, videoId, title) {
   await chrome.tabs.sendMessage(tab.id, { type: 'RUN_GEMINI', videoUrl, prompt_1, prompt_2 });
 }
 
+// Forgets the previous result (e.g. an ENTERTAINMENT verdict the user
+// disagrees with) and runs the video through Gemini again.
+async function recheckVideo(videoId) {
+  const state = await getVideoState(videoId);
+  if (!state) return;
+  await chrome.storage.local.remove(videoKey(videoId));
+  await processVideo(state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`, videoId, state.title);
+}
+
 async function onGeminiResult(msg, tabId) {
   console.log('[EduFilter] Gemini result:', msg.status, msg.detail ?? '', tabId);
   const videoId = videoIdFromUrl(msg.videoUrl);
@@ -257,6 +266,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true; // async response
     case 'OPEN_GEMINI_CHAT':
       openGeminiChat(msg.videoId).catch(logError);
+      break;
+    case 'RECHECK_VIDEO':
+      recheckVideo(msg.videoId).catch(logError);
       break;
     case 'REQUEST_PART_QUIZ':
       requestPartQuiz(msg.videoId, msg.part).catch(logError);

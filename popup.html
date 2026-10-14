@@ -28,6 +28,9 @@
     .meta.error { color: #c5221f; }
     .open-chat { flex: none; padding: 5px 10px; border: 0; border-radius: 14px; background: #1a73e8; color: #fff; }
     .open-chat:hover { background: #1765cc; }
+    .buttons { flex: none; display: flex; flex-direction: column; gap: 4px; }
+    .retry { padding: 4px 10px; border: 1px solid #c4c7c5; border-radius: 14px; background: #fff; font-size: 12px; }
+    .retry:hover { background: #f1f3f4; }
     .empty { color: #666; margin: 0; }
     #clear { padding: 0; border: 0; background: none; color: #666; font-size: 12px; text-decoration: underline; }
     details { margin-top: 14px; }
@@ -40,7 +43,7 @@
   <section>
     <h2>Videos <button id="clear" hidden>clear history</button></h2>
     <ul id="videos"></ul>
-    <p id="empty" class="empty">Nothing here yet. Useful videos (and videos that failed to process) will show up here with a link to the chat with their summary and quiz.</p>
+    <p id="empty" class="empty">Nothing here yet. Videos you watched past the threshold show up here, with a link to the chat with their summary and quiz.</p>
   </section>
 
   <details>
