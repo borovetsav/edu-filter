@@ -1,6 +1,6 @@
 // Injected by background.js into a gemini.google.com tab. Drives the chat:
-// prompt_1 + URL -> wait for the verdict -> if USEFUL, send prompt_2.
-// Also sends extra prompts on request (quizzes for parts of long videos).
+// prompt_1 + URL -> wait for the verdict -> report it.
+// Then sends extra prompts on request (summary and quiz for each stretch).
 // background.js injects it only when no live copy answers EDU_PING.
 (() => {
   const log = (...a) => console.log('[EduFilter/Gemini]', ...a);
@@ -389,7 +389,7 @@
     notify({ type: 'GEMINI_RESULT', status, detail, videoUrl: currentVideoUrl, chatUrl: location.href });
   }
 
-  async function run({ videoUrl, prompt_1, prompt_2 }) {
+  async function run({ videoUrl, prompt_1 }) {
     currentVideoUrl = videoUrl;
     try {
       // Step 1
@@ -409,18 +409,9 @@
       const verdict = classify(answer);
       showStatus(`answer to prompt_1: "${answer.slice(0, 80)}" -> ${verdict}`);
 
-      if (verdict !== 'USEFUL') {
-        report(verdict === 'FUN' ? 'FUN' : 'UNKNOWN', answer.slice(0, 200));
-        return;
-      }
-      report('USEFUL', answer.slice(0, 200));
-
-      // Step 3
-      showStatus('step 3: sending prompt_2');
-      const before2 = getResponses().length;
-      await sendPrompt(prompt_2);
-      await waitForNewResponse(before2, { step: 'step 3', quietMs: 4000, timeoutMs: 10 * 60_000 });
-      report('SUMMARY_DONE', videoUrl);
+      // No whole-video summary: summaries and quizzes come per stretch,
+      // when the YouTube page reaches a quiz break.
+      report({ USEFUL: 'USEFUL', FUN: 'FUN' }[verdict] ?? 'UNKNOWN', answer.slice(0, 200));
     } catch (err) {
       report('ERROR', String(err?.message || err));
     }

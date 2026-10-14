@@ -114,7 +114,8 @@ async function ensureGeminiScript(tabId) {
 
 // ---------- Main flow ----------
 
-const IN_PROGRESS = ['PENDING', 'USEFUL'];
+// USEFUL is final: the summaries and quizzes are requested later, per stretch.
+const IN_PROGRESS = ['PENDING'];
 const INTERRUPTED =
   'The extension was reloaded while this video was being processed. Open the chat to see how far Gemini got, or click Send again.';
 
@@ -152,8 +153,8 @@ async function processVideo(videoUrl, videoId, title) {
   await waitForTabComplete(tab.id);
   await ensureGeminiScript(tab.id);
 
-  const { prompt_1, prompt_2 } = await getPrompts();
-  await chrome.tabs.sendMessage(tab.id, { type: 'RUN_GEMINI', videoUrl, prompt_1, prompt_2 });
+  const { prompt_1 } = await getPrompts();
+  await chrome.tabs.sendMessage(tab.id, { type: 'RUN_GEMINI', videoUrl, prompt_1 });
 }
 
 // Forgets the previous result (e.g. an ENTERTAINMENT verdict the user
@@ -224,7 +225,7 @@ async function requestPartQuiz(videoId, part) {
   await chrome.tabs.sendMessage(tab.id, {
     type: 'SEND_PROMPT',
     prompt,
-    label: `quiz for part ${part.index + 1}/${part.total}`,
+    label: `summary and quiz for part ${part.index + 1}/${part.total}`,
     meta: { videoId, partIndex: part.index },
   });
 }
@@ -254,12 +255,19 @@ function isOlderThan(version, than) {
 const PROMPT_3_DEFAULT_1_1 =
   'Now write a 5-question quiz to reinforce the material covered ONLY in part {part} of {total} of this video, from {start} to {end}{chapters}. Use multiple-choice questions and put the correct answers with short explanations at the very end, after all questions. Write in Russian. Video: {url}';
 
+// The 1.2-1.4 default prompt_3 asked for a quiz only; since 1.5 there is no
+// whole-video summary (prompt_2 is gone), so each stretch gets its own
+// summary and quiz.
+const PROMPT_3_DEFAULT_1_2 =
+  'Now write a 5-question quiz to reinforce the material covered ONLY in this video from {start} to {end}{chapters}. Use multiple-choice questions and put the correct answers with short explanations at the very end, after all questions. Write in Russian. Video: {url}';
+
 // One-time migrations, run only when updating from an older version (not on
 // later updates or unpacked reloads).
 // - From 1.0, which shipped Russian prompts with Russian verdict words: the
 //   classifier now looks for USEFUL / ENTERTAINMENT, so a saved prompt_1
 //   without them can never be classified; prompt_2 was the Russian default.
 // - From 1.1: see PROMPT_3_DEFAULT_1_1.
+// - From 1.2-1.4: see PROMPT_3_DEFAULT_1_2; the saved prompt_2 is unused.
 chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (reason !== 'update') return;
   await failInterruptedVideos();
@@ -270,6 +278,10 @@ chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
     if (prompt_2 != null && /[\u0400-\u04FF]/.test(prompt_2)) stale.push('prompt_2');
   }
   if (isOlderThan(previousVersion, '1.2.0') && prompt_3 === PROMPT_3_DEFAULT_1_1) stale.push('prompt_3');
+  if (isOlderThan(previousVersion, '1.5.0')) {
+    if (prompt_2 != null) stale.push('prompt_2');
+    if (prompt_3 === PROMPT_3_DEFAULT_1_2) stale.push('prompt_3');
+  }
   if (stale.length) {
     await chrome.storage.local.remove(stale);
     console.log('[EduFilter] reset outdated prompts:', stale);

@@ -10,8 +10,8 @@
 //   past a break, by playback or by seeking, a card in the top right corner
 //   offers a quiz on the stretch since the previous break; the video keeps
 //   playing.
-// - Shows a "go to the Gemini chat" card near the end of videos too short
-//   for a break.
+// - Near the end of a useful video too short for a break, offers a summary
+//   and quiz for the whole video.
 (() => {
   const MAX_TICK_SEC = 1.5; // ignore jumps (laptop sleep, throttled tab, etc.)
   const REMINDER_BEFORE_END_SEC = 15;
@@ -380,14 +380,19 @@
     const isLast = part.index === part.total - 1;
     const topics = part.chapters.slice(0, 3).join('; ');
     showCard({
-      title: isLast ? 'Almost done: take a quiz' : 'Take a quiz to lock in the material',
+      title:
+        part.total === 1
+          ? 'Almost done: review the video'
+          : isLast
+            ? 'Almost done: review this part'
+            : 'Review what you just watched',
       lines: [
-        `You've reached ${formatTime(part.end)}. The quiz covers ${formatTime(part.start)} – ${formatTime(part.end)} of the video; the video keeps playing.`,
+        `Get a summary and a quiz for ${formatTime(part.start)} – ${formatTime(part.end)} of the video to lock in the material. The video keeps playing.`,
         ...(topics ? [`Topics: ${topics}${part.chapters.length > 3 ? '; ...' : ''}`] : []),
       ],
       actions: [
         {
-          label: 'Take the quiz',
+          label: 'Summary and quiz',
           primary: true,
           onClick: () => send({ type: 'REQUEST_PART_QUIZ', videoId: id, part }).catch(() => {}),
         },
@@ -396,7 +401,8 @@
     });
   }
 
-  // Near the end of a useful video too short for a quiz break.
+  // Near the end of a useful video too short for a quiz break: the whole
+  // video is one stretch.
   function maybeShowReminder(video) {
     const id = videoId;
     if (!id || reminded.has(id) || !isUseful() || isAdPlaying()) return;
@@ -406,21 +412,13 @@
     if (!Number.isFinite(left) || left > REMINDER_BEFORE_END_SEC) return;
 
     reminded.add(id);
-    const ready = videoState.status === 'SUMMARY_DONE';
-    showCard({
-      title: 'The video is almost over',
-      lines: [
-        ready
-          ? 'Open the Gemini chat to review the material: the summary and quiz are ready.'
-          : 'Open the Gemini chat to review the material: the summary and quiz are on their way.',
-      ],
-      actions: [
-        {
-          label: 'Open Gemini chat',
-          primary: true,
-          onClick: () => send({ type: 'OPEN_GEMINI_CHAT', videoId: id }).catch(() => {}),
-        },
-      ],
+    const end = video.duration;
+    showPartCard({
+      index: 0,
+      total: 1,
+      start: 0,
+      end,
+      chapters: readChapters(end).map((c) => c.title),
     });
   }
 

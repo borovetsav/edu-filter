@@ -56,8 +56,9 @@ const clearBtn = document.getElementById('clear');
 
 const STATUS_TEXT = {
   PENDING: { text: 'Gemini is analyzing the video...' },
-  USEFUL: { text: 'Summary and quiz in progress...' },
-  SUMMARY_DONE: { text: 'Summary and quiz ready', cls: 'ready' },
+  USEFUL: { text: 'Useful: a summary and quiz at each quiz break', cls: 'ready' },
+  // Videos processed before 1.5, which also had a whole-video summary.
+  SUMMARY_DONE: { text: 'Useful: summary and quiz ready', cls: 'ready' },
   FUN: { text: 'Gemini judged it entertainment: no summary or quizzes' },
   UNKNOWN: { text: "Couldn't read Gemini's verdict", cls: 'error' },
   ERROR: { text: 'Error', cls: 'error' },
@@ -87,7 +88,7 @@ function quizSummary(quizzes) {
     count('REQUESTED') && `${count('REQUESTED')} in progress`,
     count('ERROR') && `${count('ERROR')} failed`,
   ].filter(Boolean);
-  return `part quizzes: ${parts.join(', ')}`;
+  return `stretches: ${parts.join(', ')}`;
 }
 
 function renderVideo(v) {

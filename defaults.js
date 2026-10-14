@@ -4,15 +4,15 @@
 // The verdict words are matched literally in Gemini's answer (see classify()
 // in content_gemini.js), so custom prompts must keep asking for them.
 // Summaries and quizzes are requested in Russian on purpose.
+// prompt_1 only classifies the video; summaries and quizzes are made per
+// stretch of the video, at quiz breaks (prompt_3).
 export const DEFAULT_PROMPTS = {
   prompt_1:
     "Analyze the video at the link and reply with exactly one word: 'ENTERTAINMENT' if it is just for fun, or 'USEFUL' if it has educational or instructive content. Link: ",
-  prompt_2:
-    'Great. Now write a detailed summary of this video and a 3-question quiz to check understanding. Write your answer in Russian.',
-  // Filled in automatically for each quiz break. Placeholders:
+  // Summary and quiz for one stretch, filled in automatically. Placeholders:
   // {start} {end} {chapters} {url}, plus {part} {total} (break number).
   prompt_3:
-    'Now write a 5-question quiz to reinforce the material covered ONLY in this video from {start} to {end}{chapters}. Use multiple-choice questions and put the correct answers with short explanations at the very end, after all questions. Write in Russian. Video: {url}',
+    'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then write a 5-question multiple-choice quiz on that part, with the correct answers and short explanations at the very end, after all questions. Write in Russian. Video: {url}',
 };
 
 export async function getPrompts() {
