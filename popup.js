@@ -1,12 +1,20 @@
-import { DEFAULT_PROMPTS, getPrompts, VIDEO_KEY_PREFIX } from './defaults.js';
+import { DEFAULT_PROMPTS, DEFAULT_SETTINGS, getPrompts, VIDEO_KEY_PREFIX } from './defaults.js';
 
-// ---------- Prompts ----------
+// ---------- Prompts and settings ----------
 
-const fields = Object.keys(DEFAULT_PROMPTS).map((key) => document.getElementById(key));
+const DEFAULTS = { ...DEFAULT_PROMPTS, ...DEFAULT_SETTINGS };
+const fields = Object.keys(DEFAULTS).map((key) => document.getElementById(key));
 const status = document.getElementById('status');
 
 function fill(values) {
   for (const el of fields) el.value = values[el.id];
+}
+
+// Numbers are stored as numbers; an empty or invalid one falls back to its default.
+function readField(el) {
+  if (el.type !== 'number') return el.value;
+  const value = Number(el.value);
+  return el.value !== '' && Number.isFinite(value) && value >= Number(el.min) ? value : DEFAULT_SETTINGS[el.id];
 }
 
 function flash(text) {
@@ -15,14 +23,15 @@ function flash(text) {
 }
 
 document.getElementById('save').addEventListener('click', async () => {
-  const values = Object.fromEntries(fields.map((el) => [el.id, el.value]));
+  const values = Object.fromEntries(fields.map((el) => [el.id, readField(el)]));
   await chrome.storage.local.set(values);
+  fill(values);
   flash('Saved');
 });
 
 document.getElementById('reset').addEventListener('click', async () => {
-  fill(DEFAULT_PROMPTS);
-  await chrome.storage.local.set(DEFAULT_PROMPTS);
+  fill(DEFAULTS);
+  await chrome.storage.local.set(DEFAULTS);
   flash('Reset');
 });
 
@@ -143,5 +152,5 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && Object.keys(changes).some((k) => k.startsWith(VIDEO_KEY_PREFIX))) renderVideos();
 });
 
-fill(await getPrompts());
+fill({ ...(await getPrompts()), ...DEFAULT_SETTINGS, ...(await chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS))) });
 await renderVideos();

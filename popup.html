@@ -10,6 +10,9 @@
     label { display: block; font-weight: 600; margin: 10px 0 4px; }
     .hint { font-weight: 400; color: #666; }
     textarea { width: 100%; box-sizing: border-box; min-height: 90px; resize: vertical; font: inherit; padding: 6px; }
+    .inline { display: flex; align-items: center; gap: 6px; font-weight: 600; margin: 10px 0 0; }
+    .inline input { width: 64px; font: inherit; padding: 3px 6px; }
+    .inline .hint { font-weight: 400; }
     .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
     button { padding: 6px 12px; cursor: pointer; }
     #status { color: #188038; }
@@ -41,7 +44,13 @@
   </section>
 
   <details>
-    <summary>Prompt settings</summary>
+    <summary>Settings</summary>
+
+    <label class="inline" for="quiz_interval_min">Quiz every
+      <input id="quiz_interval_min" type="number" min="5" step="5"> minutes of video</label>
+    <label class="inline" for="quiz_snap_min">Move the break to a chapter boundary within &plusmn;
+      <input id="quiz_snap_min" type="number" min="0" step="1"> minutes</label>
+    <p class="hint">A break fires when the video reaches it, by playing or by skipping ahead. Videos shorter than about 1.5&times; the interval get no breaks, only the end-of-video card.</p>
 
     <label for="prompt_1">Prompt 1: classification <span class="hint">(the video URL is appended)</span></label>
     <textarea id="prompt_1"></textarea>
@@ -49,7 +58,7 @@
     <label for="prompt_2">Prompt 2: summary and quiz</label>
     <textarea id="prompt_2"></textarea>
 
-    <label for="prompt_3">Prompt 3: quiz for a part of a long video <span class="hint">({part} {total} {start} {end} {chapters} {url})</span></label>
+    <label for="prompt_3">Prompt 3: quiz at a break <span class="hint">(filled in automatically: {start} {end} {chapters} {url})</span></label>
     <textarea id="prompt_3"></textarea>
 
     <div class="row">

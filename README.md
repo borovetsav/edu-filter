@@ -2,7 +2,7 @@
 
 A Chrome extension (Manifest V3) that turns the YouTube videos you actually watch into study material.
 
-After you've watched a video for one minute, the extension asks [Gemini](https://gemini.google.com) whether the video is educational or just entertainment. For educational videos, it then asks Gemini for a detailed summary and a short quiz. It all happens in a background tab, so you don't have to stop watching. Long videos are split into parts of 40–60 minutes, and after each part the video pauses and offers a quiz on just that part.
+After you've watched a video for one minute, the extension asks [Gemini](https://gemini.google.com) whether the video is educational or just entertainment. For educational videos, it then asks Gemini for a detailed summary and a short quiz. It all happens in a background tab, so you don't have to stop watching. Every ~40 minutes of a useful video (configurable), the video pauses and offers a quiz on the stretch since the previous break.
 
 ## How it works
 
@@ -12,24 +12,27 @@ After you've watched a video for one minute, the extension asks [Gemini](https:/
    - **Step 1.** Sends prompt 1 together with the video URL. Gemini is asked to answer with a single word: `USEFUL` or `ENTERTAINMENT`.
    - **Step 2.** Waits for Gemini to finish answering and reads the verdict.
    - **Step 3.** If the verdict is useful, sends prompt 2 to get the summary and the quiz. If it's entertainment, it stops there.
-4. **Long videos** (see [below](#long-videos)) get a quiz after each part.
+4. **Quiz breaks** (see [below](#quiz-breaks)) pause the video every ~40 minutes and offer a quiz on that stretch.
 5. **Coming back to the chat:**
    - **End-of-video card.** When a useful video has less than 15 seconds left, a card appears on YouTube with a button that opens the Gemini chat for that video.
    - **Popup.** Clicking the extension icon shows every processed video with its status and an **Open chat** button. So you can still reach the chat if you closed the card.
 
-## Long videos
+## Quiz breaks
 
-A useful video is split into parts if it is about 75 minutes or longer:
+Useful videos get a quiz break every ~40 minutes of the video timeline. Both numbers below are set in the popup under **Settings**:
 
-- **Part length.** The number of parts is the duration divided by 50 minutes, rounded, so each part is roughly 40–60 minutes long.
-- **Boundaries follow chapters.** Each boundary moves to the nearest chapter start within 10 minutes. Chapters come from the video's chapter list, or from timestamps in the description if there is no list. Without chapters, the parts are equal.
-- **At the end of each part** the video pauses and a card appears:
-  - **Take the quiz** sends prompt 3 to the video's Gemini chat, asking for a quiz on that part only (its time range and chapter titles), and switches to that chat;
-  - **Keep watching** resumes the video.
-- **The last part** ends 15 seconds before the end of the video, where the end-of-video card would otherwise appear.
-- **Seeking past a boundary skips that part's card.** The video only pauses when it plays through a boundary.
+- **Quiz every N minutes** (default 40). Each break is placed about N minutes after the previous one.
+- **Move the break to a chapter boundary within ±M minutes** (default 10). The break moves to the nearest chapter start in that window, so a quiz doesn't cut a topic in half. Chapters come from the video's chapter list, or from timestamps in the description if there is no list. If no chapter is close enough, the break stays at exactly N minutes.
+- **The end of the video counts as the last break.** It is placed 15 seconds before the end. No break is placed where less than N/2 minutes would remain, so videos shorter than about 1.5 × N get no breaks, only the end-of-video card.
 
-For example, the 1:56 lecture [*Let's build GPT*](https://www.youtube.com/watch?v=kCc8FmEb1nY) is split into 0:00–58:26 and 58:26–1:56:05. The boundary sits at the start of the "minor code cleanup" chapter.
+**What triggers a break.** A break fires when the playhead moves forward past it, either by playing or by seeking ahead:
+
+- **When it fires,** the video pauses and a card offers **Take the quiz** and **Keep watching**. Take the quiz sends prompt 3 to the video's Gemini chat and switches to it; the prompt asks for a quiz on that stretch only, with its time range and chapter titles.
+- **One seek across several breaks** shows one card, covering everything from the first skipped break's stretch.
+- **Seeking backward never fires a break,** and each break fires once per page load.
+- **The position a video opens at** (YouTube resuming where you left off, or a `&t=` link) is not a move, so no card appears on load.
+
+Example: the 1:56 lecture [*Let's build GPT*](https://www.youtube.com/watch?v=kCc8FmEb1nY) with the defaults gets breaks at 38:00 and 1:16:56 (chapter starts closest to 40:00 and 1:18:00), plus the end. With "every 30 minutes, ±5" the breaks are at 34:53, 1:02:00 and 1:32:51.
 
 ## Installation
 
@@ -53,20 +56,20 @@ Watch YouTube as usual. After a minute of watching:
   - *Summary and quiz in progress* — the video was judged useful and the second prompt has been sent;
   - *Summary and quiz ready* — both are done;
   - an error, with the reason.
-- For long videos, the popup also shows how many part quizzes are ready.
+- For videos with quiz breaks, the popup also shows how many break quizzes are ready.
 - Entertainment videos don't appear in the list.
 
 Each video is processed only once, and the history is kept across browser restarts. To process a video again, open the popup and click **clear history** twice. Then reload the YouTube tab.
 
 ### Customizing prompts
 
-Open the popup, expand **Prompt settings**, edit the prompts and click **Save**. **Reset to defaults** restores the built-in prompts.
+Open the popup, expand **Settings**, edit the prompts and click **Save**. **Reset to defaults** restores the built-in prompts and quiz settings.
 
 | Prompt | Purpose |
 |---|---|
 | `prompt_1` | Classification. The video URL is appended. |
 | `prompt_2` | Summary and quiz for the whole video. |
-| `prompt_3` | Quiz for one part of a long video. Placeholders: `{part}`, `{total}`, `{start}`, `{end}`, `{chapters}` (". Topics of this part: ..." or empty), `{url}`. |
+| `prompt_3` | Quiz at a break. Filled in automatically; you don't need to change it. Placeholders: `{start}`, `{end}`, `{chapters}` (". Topics of this part: ..." or empty), `{url}`, and `{part}` / `{total}` (break number and count). |
 
 By default, prompts 2 and 3 ask Gemini to answer in Russian. Change that line to get summaries in another language.
 
@@ -78,7 +81,7 @@ The classifier looks for the words `USEFUL` and `ENTERTAINMENT` in Gemini's answ
 manifest.json       MV3 manifest: permissions, content scripts, popup
 defaults.js         Default prompts and shared storage helpers
 background.js       Service worker: opens the Gemini tab, injects the script, stores per-video state
-content_yt.js       YouTube: watch time, long-video parts, pause cards
+content_yt.js       YouTube: watch time, quiz breaks, pause cards
 content_gemini.js   Gemini: sends prompts, waits for answers, classifies
 popup.html/.js      Video history and prompt settings
 ```
@@ -105,7 +108,7 @@ All selectors are listed at the top of `content_gemini.js`, from the most specif
 
 - **The Gemini tab shows a status panel in its bottom-left corner.** It shows the current step, what the script has read from the answer, and whether Gemini is still generating.
 - **Logs:**
-  - in the YouTube and Gemini tabs, open DevTools (F12) → Console and filter by `[EduFilter]`. For a long video, the YouTube log lists its parts;
+  - in the YouTube and Gemini tabs, open DevTools (F12) → Console and filter by `[EduFilter]`. For a video with quiz breaks, the YouTube log lists them;
   - for the background part, go to `chrome://extensions` → Edu Filter → **service worker**.
 - **No Gemini tab opens.** Either the video is already in the history (clear it, see [Usage](#usage)), or the YouTube tab wasn't reloaded after you reloaded the extension. In the second case the old script on the page is disconnected and does nothing.
 - **"Timed out waiting for the input field".** You're signed out of Gemini, or a dialog is covering the input field.
@@ -115,4 +118,4 @@ All selectors are listed at the top of `content_gemini.js`, from the most specif
 - **You need a signed-in Gemini session in the same Chrome profile.** Your prompts and Gemini's answers are saved in your Gemini chat history.
 - **Gemini's page can change at any time, and so can YouTube's.** When that happens, the selectors in `content_gemini.js` and `content_yt.js` may need updating. For example, YouTube has rendered chapter titles both as `h3` and as `h4`.
 - **Some short videos won't show the end-of-video card.** If Gemini's verdict arrives after the video has ended, the card isn't shown. The chat is still available from the popup.
-- **Timestamps in the description are less reliable than the chapter list.** Descriptions often contain unrelated timestamps, so parts are only as good as the chapters found.
+- **Timestamps in the description are less reliable than the chapter list.** Descriptions often contain unrelated timestamps, so breaks are only as well placed as the chapters found.

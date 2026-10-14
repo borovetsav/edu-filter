@@ -4,9 +4,12 @@
 //
 // - Counts real playback time and asks the background to process the video
 //   after THRESHOLD_SEC.
-// - Splits long useful videos into parts (by chapters when possible), pauses
-//   at the end of each part and offers a quiz on that part.
-// - Shows a "go to the Gemini chat" card near the end of other useful videos.
+// - Places quiz breaks in useful videos every ~N minutes of the timeline
+//   (moved to chapter starts when possible). When the playhead moves forward
+//   past a break, by playback or by seeking, the video pauses and a card
+//   offers a quiz on the stretch since the previous break.
+// - Shows a "go to the Gemini chat" card near the end of videos too short
+//   for a break.
 (() => {
   const THRESHOLD_SEC = 60;
   const MAX_TICK_SEC = 1.5; // ignore jumps (laptop sleep, throttled tab, etc.)
@@ -14,13 +17,9 @@
   const STATE_REFRESH_MS = 5000;
   const CARD_ID = 'edu-filter-card';
 
-  // Long videos are split into parts of about TARGET_PART_SEC (40-60 min).
-  // A video gets at least two parts only from ~75 min on. Part boundaries
-  // snap to the nearest chapter start within CHAPTER_SNAP_SEC.
-  const TARGET_PART_SEC = 50 * 60;
-  const CHAPTER_SNAP_SEC = 10 * 60;
-  // A jump of the playhead larger than this is a seek, not playback.
-  const MAX_PLAYBACK_STEP_SEC = 2;
+  // Set in the popup. Keep in sync with DEFAULT_SETTINGS in defaults.js.
+  const DEFAULT_SETTINGS = { quiz_interval_min: 40, quiz_snap_min: 10 };
+  const MIN_INTERVAL_MIN = 5;
   // Without chapters, wait this long after navigation before settling on
   // equal parts: the chapter list may not have rendered yet.
   const CHAPTERS_GRACE_MS = 30_000;
@@ -30,13 +29,32 @@
   let lastTick = null; // performance.now() of the last counted playback moment
   let videoState = null; // cached GET_VIDEO_STATUS answer for videoId
   let lastStateFetch = 0;
-  let parts; // undefined: not computed yet, null: video is not split
-  let lastPos = null; // video.currentTime at the previous main-video playback tick
+  let settings = { ...DEFAULT_SETTINGS };
+  let parts; // undefined: not computed yet, null: no quiz breaks in this video
+  let lastPos = null; // last known main-video playhead position (not during ads)
   let resetAt = 0; // performance.now() of the last navigation
 
   const triggered = new Set(); // videoIds already sent to the background
   const reminded = new Set(); // videoIds that got the end-of-video card
-  const shownParts = new Set(); // `${videoId}:${partIndex}` cards already shown
+  const shownParts = new Set(); // partKey()s whose break already fired
+
+  // After the extension is reloaded or updated, this copy of the script keeps
+  // running in tabs that were already open, but chrome.runtime is gone and
+  // every call to it throws. The orphaned copy unhooks itself instead; the
+  // tab gets a fresh copy when it is reloaded.
+  const isConnected = () => !!chrome.runtime?.id;
+
+  function send(message) {
+    if (isConnected()) {
+      try {
+        return chrome.runtime.sendMessage(message);
+      } catch {
+        // context invalidated between the check and the call
+      }
+    }
+    disconnect();
+    return Promise.resolve(null);
+  }
 
   function currentVideoId() {
     if (location.pathname !== '/watch') return null;
@@ -70,6 +88,24 @@
     return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
   }
 
+  // ---------- Settings ----------
+
+  function applySettings(stored) {
+    const interval = Number(stored.quiz_interval_min);
+    const snap = Number(stored.quiz_snap_min);
+    settings = {
+      quiz_interval_min: interval >= MIN_INTERVAL_MIN ? interval : DEFAULT_SETTINGS.quiz_interval_min,
+      quiz_snap_min: snap >= 0 ? snap : DEFAULT_SETTINGS.quiz_snap_min,
+    };
+    parts = undefined; // recompute the breaks with the new settings
+  }
+
+  chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS)).then(applySettings, () => {});
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !Object.keys(DEFAULT_SETTINGS).some((k) => k in changes)) return;
+    chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS)).then(applySettings, () => {});
+  });
+
   // ---------- Watch time ----------
 
   function accumulate() {
@@ -91,7 +127,7 @@
     triggered.add(videoId);
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     console.log(`[EduFilter] watched ${Math.round(watchedSec)} s, sending`, url);
-    chrome.runtime.sendMessage({ type: 'VIDEO_WATCHED', url, videoId, title: videoTitle() }).catch((err) => {
+    send({ type: 'VIDEO_WATCHED', url, videoId, title: videoTitle() }).catch((err) => {
       console.warn('[EduFilter] failed to send the message:', err);
       triggered.delete(videoId); // retry on the next timeupdate
     });
@@ -104,7 +140,7 @@
     const now = performance.now();
     if (!id || videoState?.verdict === 'FUN' || now - lastStateFetch < STATE_REFRESH_MS) return;
     lastStateFetch = now;
-    const state = await chrome.runtime.sendMessage({ type: 'GET_VIDEO_STATUS', videoId: id }).catch(() => null);
+    const state = await send({ type: 'GET_VIDEO_STATUS', videoId: id }).catch(() => null);
     if (id === videoId) videoState = state;
   }
 
@@ -150,34 +186,37 @@
       .sort((a, b) => a.start - b.start);
   }
 
-  // Splits [0, duration] into about duration / TARGET_PART_SEC equal parts,
-  // moving each boundary to the nearest chapter start if one is close enough.
-  function buildParts(duration, chapters) {
-    const total = Math.round(duration / TARGET_PART_SEC);
-    if (total < 2) return null;
-
-    const boundaries = [0];
-    for (let i = 1; i < total; i++) {
-      const ideal = (duration * i) / total;
-      let best = ideal;
-      let bestDistance = CHAPTER_SNAP_SEC;
+  // Places breaks along the timeline: each about intervalSec after the
+  // previous one, moved to the nearest chapter start within snapSec of that
+  // target. No break goes where less than half an interval would remain.
+  // Returns the parts between breaks (the last one ends where the
+  // end-of-video card would appear), or null if the video is too short.
+  function buildParts(duration, chapters, intervalSec, snapSec) {
+    const videoEnd = duration - REMINDER_BEFORE_END_SEC;
+    const latest = videoEnd - intervalSec / 2;
+    const breaks = [];
+    for (let prev = 0; ; prev = breaks.at(-1)) {
+      const target = prev + intervalSec;
+      if (target > latest) break;
+      let best = target;
+      let bestDistance = snapSec;
       for (const c of chapters) {
-        const distance = Math.abs(c.start - ideal);
-        if (c.start > boundaries.at(-1) && distance <= bestDistance) {
+        const distance = Math.abs(c.start - target);
+        if (c.start > prev + intervalSec / 2 && c.start <= latest && distance <= bestDistance) {
           best = c.start;
           bestDistance = distance;
         }
       }
-      boundaries.push(best);
+      breaks.push(best);
     }
-    // The last part ends where the end-of-video card would appear.
-    boundaries.push(duration - REMINDER_BEFORE_END_SEC);
+    if (!breaks.length) return null;
 
-    return boundaries.slice(0, -1).map((start, index) => {
-      const end = boundaries[index + 1];
+    const bounds = [0, ...breaks, videoEnd];
+    return bounds.slice(0, -1).map((start, index) => {
+      const end = bounds[index + 1];
       return {
         index,
-        total,
+        total: bounds.length - 1,
         start,
         end,
         chapters: chapters.filter((c) => c.start >= start && c.start < end).map((c) => c.title),
@@ -185,46 +224,60 @@
     });
   }
 
-  // Computed once per useful video. Not gated on watch time: a video resumed
-  // mid-way may cross a part end within its first minute. The page must
-  // already show this video (SPA navigation swaps the DOM late), and no ad
-  // may be playing (an ad's duration is not the video's).
+  // Computed once per useful video (and again when the settings change).
+  // Not gated on watch time: a video resumed mid-way may reach a break within
+  // its first minute. The page must already show this video (SPA navigation
+  // swaps the DOM late), and no ad may be playing (an ad's duration is not
+  // the video's).
   function getParts(video) {
     if (parts !== undefined) return parts;
     if (!isUseful() || isAdPlaying() || !Number.isFinite(video.duration)) return null;
     if (document.querySelector('ytd-watch-flexy')?.getAttribute('video-id') !== videoId) return null;
 
     const chapters = readChapters(video.duration);
-    const result = buildParts(video.duration, chapters);
+    const result = buildParts(
+      video.duration,
+      chapters,
+      settings.quiz_interval_min * 60,
+      settings.quiz_snap_min * 60
+    );
     if (result && !chapters.length && performance.now() - resetAt < CHAPTERS_GRACE_MS) return result;
 
     parts = result;
     if (parts) {
       console.log(
-        `[EduFilter] long video, ${parts.length} parts (${chapters.length} chapters):`,
+        `[EduFilter] quiz breaks every ~${settings.quiz_interval_min} min (${chapters.length} chapters):`,
         parts.map((p) => `${formatTime(p.start)}-${formatTime(p.end)}`).join(', ')
       );
     }
     return parts;
   }
 
-  // Pauses when playback naturally crosses the end of a part. Seeking past a
-  // boundary does not count: the user chose to skip.
-  function checkPartBoundary(video) {
-    const pos = video.currentTime;
-    const prev = lastPos;
-    lastPos = pos;
-    if (prev == null || pos < prev || pos - prev > MAX_PLAYBACK_STEP_SEC) return;
-    if (!isUseful()) return;
+  // Keyed by position, not index, so a recompute after a settings change
+  // does not re-fire breaks that already fired.
+  const partKey = (part) => `${videoId}:${Math.round(part.end)}`;
 
-    for (const part of getParts(video) ?? []) {
-      const key = `${videoId}:${part.index}`;
-      if (shownParts.has(key) || !(prev < part.end && pos >= part.end)) continue;
-      shownParts.add(key);
-      video.pause();
-      showPartCard(video, part);
-      return;
-    }
+  // Called whenever the playhead moves, by playback or by a seek. Moving
+  // forward past a break fires it, even by skipping ahead; moving backward
+  // never does, and each break fires once. A seek across several breaks
+  // shows one card covering everything from the first skipped break's part.
+  // The position the page opens at (e.g. YouTube resuming) is not a move.
+  function checkPartBoundary(video, prev, pos) {
+    if (prev == null || pos <= prev || !isUseful()) return;
+
+    const crossed = (getParts(video) ?? []).filter(
+      (part) => !shownParts.has(partKey(part)) && prev < part.end && pos >= part.end
+    );
+    if (!crossed.length) return;
+    crossed.forEach((part) => shownParts.add(partKey(part)));
+
+    const last = crossed.at(-1);
+    video.pause();
+    showPartCard(video, {
+      ...last,
+      start: crossed[0].start,
+      chapters: crossed.flatMap((part) => part.chapters),
+    });
   }
 
   // ---------- Cards ----------
@@ -310,25 +363,23 @@
     const isLast = part.index === part.total - 1;
     const topics = part.chapters.slice(0, 3).join('; ');
     showCard({
-      title: isLast
-        ? `Almost done: part ${part.total} of ${part.total} finished`
-        : `Part ${part.index + 1} of ${part.total} finished`,
+      title: isLast ? 'Almost done: time for a quiz' : 'Time for a quiz',
       lines: [
-        `${formatTime(part.start)} – ${formatTime(part.end)}. Take a short quiz on this part to lock in the material.`,
+        `Covers ${formatTime(part.start)} – ${formatTime(part.end)} of the video. Take a short quiz on it to lock in the material.`,
         ...(topics ? [`Topics: ${topics}${part.chapters.length > 3 ? '; ...' : ''}`] : []),
       ],
       actions: [
         {
           label: 'Take the quiz',
           primary: true,
-          onClick: () => chrome.runtime.sendMessage({ type: 'REQUEST_PART_QUIZ', videoId: id, part }).catch(() => {}),
+          onClick: () => send({ type: 'REQUEST_PART_QUIZ', videoId: id, part }).catch(() => {}),
         },
         { label: 'Keep watching', onClick: () => video.play() },
       ],
     });
   }
 
-  // Near the end of a useful video that is not split into parts.
+  // Near the end of a useful video too short for a quiz break.
   function maybeShowReminder(video) {
     const id = videoId;
     if (!id || reminded.has(id) || !isUseful() || isAdPlaying()) return;
@@ -350,7 +401,7 @@
         {
           label: 'Open Gemini chat',
           primary: true,
-          onClick: () => chrome.runtime.sendMessage({ type: 'OPEN_GEMINI_CHAT', videoId: id }).catch(() => {}),
+          onClick: () => send({ type: 'OPEN_GEMINI_CHAT', videoId: id }).catch(() => {}),
         },
       ],
     });
@@ -360,6 +411,10 @@
 
   function onMediaEvent(e) {
     if (!isMainVideo(e.target)) return;
+    if (!isConnected()) {
+      disconnect();
+      return;
+    }
 
     // In case yt-navigate-finish was missed and the video already changed.
     if (currentVideoId() !== videoId) reset();
@@ -378,14 +433,17 @@
         // Count the stretch up to the stop (if one was running) and stop counting.
         if (lastTick !== null && !isAdPlaying()) accumulate();
         lastTick = null;
-        if (e.type === 'seeking') lastPos = null;
+        // currentTime already holds the seek target here.
+        if (e.type === 'seeking' && !isAdPlaying()) {
+          checkPartBoundary(video, lastPos, video.currentTime);
+          lastPos = video.currentTime;
+        }
         maybeTrigger();
         if (e.type === 'ended' && !isAdPlaying()) maybeShowReminder(video);
         break;
       case 'timeupdate':
-        // lastPos is kept across pauses and ads, so a part end crossed right
-        // after resuming (or after a mid-roll) is still detected; only a
-        // seek clears it.
+        // lastPos is kept across pauses and ads, so a break crossed right
+        // after resuming (or after a mid-roll) is still detected.
         if (video.paused || video.ended || isAdPlaying()) {
           lastTick = null;
           return;
@@ -393,25 +451,30 @@
         accumulate();
         maybeTrigger();
         refreshState();
-        checkPartBoundary(video);
+        checkPartBoundary(video, lastPos, video.currentTime);
+        lastPos = video.currentTime;
         maybeShowReminder(video);
         break;
     }
   }
 
+  const MEDIA_EVENTS = ['play', 'playing', 'pause', 'ended', 'waiting', 'seeking', 'timeupdate'];
+  const onNavigate = () => {
+    if (currentVideoId() !== videoId) reset();
+  };
+
   // Media events do not bubble, so they are caught in the capture phase;
   // this also survives YouTube replacing the <video> element.
-  for (const type of ['play', 'playing', 'pause', 'ended', 'waiting', 'seeking', 'timeupdate']) {
-    document.addEventListener(type, onMediaEvent, true);
-  }
-
+  for (const type of MEDIA_EVENTS) document.addEventListener(type, onMediaEvent, true);
   // YouTube SPA navigation.
-  document.addEventListener('yt-navigate-finish', () => {
-    if (currentVideoId() !== videoId) reset();
-  });
-  window.addEventListener('popstate', () => {
-    if (currentVideoId() !== videoId) reset();
-  });
+  document.addEventListener('yt-navigate-finish', onNavigate);
+  window.addEventListener('popstate', onNavigate);
+
+  function disconnect() {
+    for (const type of MEDIA_EVENTS) document.removeEventListener(type, onMediaEvent, true);
+    document.removeEventListener('yt-navigate-finish', onNavigate);
+    window.removeEventListener('popstate', onNavigate);
+  }
 
   reset();
 })();

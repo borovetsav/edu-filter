@@ -213,16 +213,27 @@ function isOlderThan(version, than) {
   return false;
 }
 
-// One-time migration from 1.0, which shipped Russian prompts with Russian
-// verdict words. The classifier now looks for USEFUL / ENTERTAINMENT, so a
-// saved prompt_1 without them can never be classified; prompt_2 was the
-// Russian 1.0 default. Later updates (and unpacked reloads) leave prompts alone.
+// The 1.1 default prompt_3 spoke of "part {part} of {total}"; since 1.2 a
+// quiz can cover several merged parts, so a saved copy of that exact default
+// is replaced by the new one. Edited prompts are left alone.
+const PROMPT_3_DEFAULT_1_1 =
+  'Now write a 5-question quiz to reinforce the material covered ONLY in part {part} of {total} of this video, from {start} to {end}{chapters}. Use multiple-choice questions and put the correct answers with short explanations at the very end, after all questions. Write in Russian. Video: {url}';
+
+// One-time migrations, run only when updating from an older version (not on
+// later updates or unpacked reloads).
+// - From 1.0, which shipped Russian prompts with Russian verdict words: the
+//   classifier now looks for USEFUL / ENTERTAINMENT, so a saved prompt_1
+//   without them can never be classified; prompt_2 was the Russian default.
+// - From 1.1: see PROMPT_3_DEFAULT_1_1.
 chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
-  if (reason !== 'update' || !isOlderThan(previousVersion, '1.1.0')) return;
-  const { prompt_1, prompt_2 } = await chrome.storage.local.get(['prompt_1', 'prompt_2']);
+  if (reason !== 'update') return;
+  const { prompt_1, prompt_2, prompt_3 } = await chrome.storage.local.get(['prompt_1', 'prompt_2', 'prompt_3']);
   const stale = [];
-  if (prompt_1 != null && !(prompt_1.includes('USEFUL') && prompt_1.includes('ENTERTAINMENT'))) stale.push('prompt_1');
-  if (prompt_2 != null && /[\u0400-\u04FF]/.test(prompt_2)) stale.push('prompt_2');
+  if (isOlderThan(previousVersion, '1.1.0')) {
+    if (prompt_1 != null && !(prompt_1.includes('USEFUL') && prompt_1.includes('ENTERTAINMENT'))) stale.push('prompt_1');
+    if (prompt_2 != null && /[\u0400-\u04FF]/.test(prompt_2)) stale.push('prompt_2');
+  }
+  if (isOlderThan(previousVersion, '1.2.0') && prompt_3 === PROMPT_3_DEFAULT_1_1) stale.push('prompt_3');
   if (stale.length) {
     await chrome.storage.local.remove(stale);
     console.log('[EduFilter] reset outdated prompts:', stale);
