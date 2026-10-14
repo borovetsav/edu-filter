@@ -12,7 +12,7 @@ export const DEFAULT_PROMPTS = {
   // Summary and quiz for one stretch, filled in automatically. Placeholders:
   // {start} {end} {chapters} {url}, plus {part} {total} (break number).
   prompt_3:
-    'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then write a 5-question multiple-choice quiz on that part, with the correct answers and short explanations at the very end, after all questions. Write in Russian. Video: {url}',
+    'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then make an INTERACTIVE quiz on that part: use your built-in interactive quiz feature, the one where I click an answer option and immediately see whether it is right, with an explanation. 5 multiple-choice questions. This is important: do NOT write the quiz as plain text, and do NOT list the questions or answers in the message; I want the clickable interactive quiz. Write everything in Russian. Video: {url}',
 };
 
 export async function getPrompts() {

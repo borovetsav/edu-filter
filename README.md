@@ -19,7 +19,7 @@ Watching a 2-hour lecture is easy; remembering it is not. Edu Filter checks whet
 1. **You watch a video** for N minutes (default 10). A video you drop after a couple of minutes is not worth remembering.
 2. **Gemini decides** in a background tab whether the video is `USEFUL` or `ENTERTAINMENT`. You keep watching.
 3. **At each quiz break**, a card appears in the top right corner. Breaks are every ~40 minutes of the video's timeline and snap to the nearest chapter. The video keeps playing. Skipping ahead past a break also shows the card: one card covers every stretch you skipped.
-4. **Click "Summary and quiz"**. The same Gemini chat gets a request for that stretch only: a summary broken down by timestamps and a 5-question quiz with answers at the end.
+4. **Click "Summary and quiz"**. The same Gemini chat gets a request for that stretch only: a summary broken down by timestamps and a 5-question **interactive quiz**: Gemini's built-in quiz, where you click an answer and see right away whether it's correct.
 
 Short videos get a single card for the whole video near the end.
 

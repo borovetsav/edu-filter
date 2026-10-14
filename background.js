@@ -266,6 +266,12 @@ const PROMPT_3_DEFAULT_1_1 =
 const PROMPT_3_DEFAULT_1_2 =
   'Now write a 5-question quiz to reinforce the material covered ONLY in this video from {start} to {end}{chapters}. Use multiple-choice questions and put the correct answers with short explanations at the very end, after all questions. Write in Russian. Video: {url}';
 
+// The 1.5-1.6 default prompt_3 asked for a plain-text quiz; Gemini then
+// often wrote the questions as text instead of its interactive quiz, so since
+// 1.7 the default insists on the interactive one.
+const PROMPT_3_DEFAULT_1_5 =
+  'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then write a 5-question multiple-choice quiz on that part, with the correct answers and short explanations at the very end, after all questions. Write in Russian. Video: {url}';
+
 // One-time migrations, run only when updating from an older version (not on
 // later updates or unpacked reloads).
 // - From 1.0, which shipped Russian prompts with Russian verdict words: the
@@ -273,6 +279,7 @@ const PROMPT_3_DEFAULT_1_2 =
 //   without them can never be classified; prompt_2 was the Russian default.
 // - From 1.1: see PROMPT_3_DEFAULT_1_1.
 // - From 1.2-1.4: see PROMPT_3_DEFAULT_1_2; the saved prompt_2 is unused.
+// - From 1.5-1.6: see PROMPT_3_DEFAULT_1_5.
 chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (reason !== 'update') return;
   await failInterruptedVideos();
@@ -287,6 +294,7 @@ chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
     if (prompt_2 != null) stale.push('prompt_2');
     if (prompt_3 === PROMPT_3_DEFAULT_1_2) stale.push('prompt_3');
   }
+  if (isOlderThan(previousVersion, '1.7.0') && prompt_3 === PROMPT_3_DEFAULT_1_5) stale.push('prompt_3');
   if (stale.length) {
     await chrome.storage.local.remove(stale);
     console.log('[EduFilter] reset outdated prompts:', stale);
