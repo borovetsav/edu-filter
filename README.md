@@ -2,11 +2,11 @@
 
 A Chrome extension (Manifest V3) that turns the YouTube videos you actually watch into study material.
 
-After you've watched a video for one minute, the extension asks [Gemini](https://gemini.google.com) whether the video is educational or just entertainment. For educational videos, it then asks Gemini for a detailed summary and a short quiz. It all happens in a background tab, so you don't have to stop watching. Every ~40 minutes of a useful video (configurable), the video pauses and offers a quiz on the stretch since the previous break.
+After you've watched a video for 10 minutes (configurable), the extension asks [Gemini](https://gemini.google.com) whether the video is educational or just entertainment. For educational videos, it then asks Gemini for a detailed summary and a short quiz. It all happens in a background tab, so you don't have to stop watching. Every ~40 minutes of a useful video (configurable), the video pauses and offers a quiz on the stretch since the previous break.
 
 ## How it works
 
-1. **Watch-time tracking (`content_yt.js`).** The extension counts the seconds a video is actually playing. Pauses, seeking and ads don't count. The counter resets when you move to another video. YouTube is a single-page app, so the extension listens for `yt-navigate-finish` to notice the change. After 60 seconds of watching, it fires once for that video.
+1. **Watch-time tracking (`content_yt.js`).** The extension counts the seconds a video is actually playing. Pauses, seeking and ads don't count. The counter resets when you move to another video. YouTube is a single-page app, so the extension listens for `yt-navigate-finish` to notice the change. Once you've watched it for N minutes (**Send a video to Gemini after N minutes of watching**, default 10), it fires once for that video. A video shorter than N minutes counts once 90% of it was watched. The idea: a video you keep watching is worth remembering, one you drop after 3 minutes is not.
 2. **Background tab (`background.js`).** The extension opens `gemini.google.com/app` in an inactive tab and injects the automation script into it. It then hands that script the video URL and your prompts.
 3. **Gemini automation (`content_gemini.js`):**
    - **Step 1.** Sends prompt 1 together with the video URL. Gemini is asked to answer with a single word: `USEFUL` or `ENTERTAINMENT`.
@@ -29,6 +29,7 @@ Useful videos get a quiz break every ~40 minutes of the video timeline. Both num
 
 - **When it fires,** the video pauses and a card offers **Take the quiz** and **Keep watching**. Take the quiz sends prompt 3 to the video's Gemini chat and switches to it; the prompt asks for a quiz on that stretch only, with its time range and chapter titles.
 - **One seek across several breaks** shows one card, covering everything from the first skipped break's stretch.
+- **Breaks need the verdict.** A break reached before the video passed the watch threshold and Gemini called it useful does not fire. With the defaults (10 and 40 minutes) the verdict is long in place by the first break.
 - **Seeking backward never fires a break,** and each break fires once per page load.
 - **The position a video opens at** (YouTube resuming where you left off, or a `&t=` link) is not a move, so no card appears on load.
 
@@ -48,7 +49,7 @@ For better results, enable the YouTube app in Gemini. Without it, Gemini can't s
 
 ## Usage
 
-Watch YouTube as usual. After a minute of watching:
+Watch YouTube as usual. Once a video passes the watch threshold:
 
 - A Gemini tab opens in the background.
 - Its status shows up in the popup:
@@ -63,7 +64,7 @@ Each video is processed only once, and the history is kept across browser restar
 
 ### Customizing prompts
 
-Open the popup, expand **Settings**, edit the prompts and click **Save**. **Reset to defaults** restores the built-in prompts and quiz settings.
+Open the popup, expand **Settings** and edit the prompts. Every change is saved as you type (the popup closes on any click outside it, so nothing waits for the **Save** button). **Reset to defaults** restores the built-in prompts and quiz settings.
 
 | Prompt | Purpose |
 |---|---|

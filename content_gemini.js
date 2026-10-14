@@ -88,6 +88,12 @@
 
   const VERDICT_USEFUL = 'USEFUL';
   const VERDICT_FUN = 'ENTERTAINMENT';
+  // Gemini sometimes answers prompt_1 with nothing but the YouTube video
+  // card. Then it is asked again, up to VERDICT_RETRIES times.
+  const VERDICT_RETRY_PROMPT = `Answer with exactly one word: ${VERDICT_USEFUL} or ${VERDICT_FUN}.`;
+  const VERDICT_RETRIES = 2;
+  // How long a finished answer without the verdict word is waited on before asking again.
+  const VERDICT_IDLE_MS = 20_000;
 
   // ---------- Utilities ----------
 
@@ -267,9 +273,11 @@
   // most to maxStopWaitMs in case the selector catches the wrong element.
   // isComplete(text) is an extra readiness check, e.g. "the verdict word is
   // there": a long thinking pause must not count as the end of the answer.
+  // With idleMs set, an answer that never passes isComplete is still returned
+  // once Gemini has stopped generating and the text has not changed for idleMs.
   async function waitForNewResponse(
     prevCount,
-    { step, isComplete = () => true, quietMs = 3000, maxStopWaitMs = 20_000, timeoutMs = 5 * 60_000 } = {}
+    { step, isComplete = () => true, idleMs = null, quietMs = 3000, maxStopWaitMs = 20_000, timeoutMs = 5 * 60_000 } = {}
   ) {
     showStatus(`${step}: waiting for an answer (answers on page: ${prevCount})`);
     await waitFor(() => getResponses().length > prevCount, 90_000, 'an answer to appear');
@@ -303,8 +311,9 @@
         if (logNow) lastLog = now;
         showStatus(state, { silent: !logNow });
 
-        const done =
-          text && isComplete(text) && stable >= quietMs && (!generating || stable >= maxStopWaitMs);
+        const settled = stable >= quietMs && (!generating || stable >= maxStopWaitMs);
+        const gaveUp = idleMs != null && !generating && stable >= idleMs;
+        const done = text && ((isComplete(text) && settled) || gaveUp);
         if (done) {
           if (generating) log('stop button still visible but the text is stable, treating the answer as done');
           cleanup();
@@ -379,10 +388,14 @@
       await sendPrompt(`${prompt_1} ${videoUrl}`);
 
       // Step 2
-      const answer = await waitForNewResponse(before1, {
-        step: 'step 2',
-        isComplete: (text) => classify(text) !== 'UNKNOWN',
-      });
+      const hasVerdict = (text) => classify(text) !== 'UNKNOWN';
+      let answer = await waitForNewResponse(before1, { step: 'step 2', isComplete: hasVerdict, idleMs: VERDICT_IDLE_MS });
+      for (let retry = 1; !hasVerdict(answer) && retry <= VERDICT_RETRIES; retry++) {
+        showStatus(`step 2: no verdict in "${answer.slice(0, 60)}", asking again (${retry}/${VERDICT_RETRIES})`);
+        const before = getResponses().length;
+        await sendPrompt(VERDICT_RETRY_PROMPT);
+        answer = await waitForNewResponse(before, { step: 'step 2 (retry)', isComplete: hasVerdict, idleMs: VERDICT_IDLE_MS });
+      }
       const verdict = classify(answer);
       showStatus(`answer to prompt_1: "${answer.slice(0, 80)}" -> ${verdict}`);
 

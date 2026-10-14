@@ -3,7 +3,8 @@
 // /watch would never start.
 //
 // - Counts real playback time and asks the background to process the video
-//   after THRESHOLD_SEC.
+//   once it has been watched for watch_threshold_min minutes (or, if the
+//   video is shorter than that, once SHORT_VIDEO_SHARE of it was watched).
 // - Places quiz breaks in useful videos every ~N minutes of the timeline
 //   (moved to chapter starts when possible). When the playhead moves forward
 //   past a break, by playback or by seeking, the video pauses and a card
@@ -11,15 +12,17 @@
 // - Shows a "go to the Gemini chat" card near the end of videos too short
 //   for a break.
 (() => {
-  const THRESHOLD_SEC = 60;
   const MAX_TICK_SEC = 1.5; // ignore jumps (laptop sleep, throttled tab, etc.)
   const REMINDER_BEFORE_END_SEC = 15;
   const STATE_REFRESH_MS = 5000;
   const CARD_ID = 'edu-filter-card';
 
   // Set in the popup. Keep in sync with DEFAULT_SETTINGS in defaults.js.
-  const DEFAULT_SETTINGS = { quiz_interval_min: 40, quiz_snap_min: 10 };
+  const DEFAULT_SETTINGS = { watch_threshold_min: 10, quiz_interval_min: 40, quiz_snap_min: 10 };
   const MIN_INTERVAL_MIN = 5;
+  const MIN_THRESHOLD_MIN = 1;
+  // A video shorter than the threshold counts as watched at this share of it.
+  const SHORT_VIDEO_SHARE = 0.9;
   // Without chapters, wait this long after navigation before settling on
   // equal parts: the chapter list may not have rendered yet.
   const CHAPTERS_GRACE_MS = 30_000;
@@ -91,9 +94,11 @@
   // ---------- Settings ----------
 
   function applySettings(stored) {
+    const threshold = Number(stored.watch_threshold_min);
     const interval = Number(stored.quiz_interval_min);
     const snap = Number(stored.quiz_snap_min);
     settings = {
+      watch_threshold_min: threshold >= MIN_THRESHOLD_MIN ? threshold : DEFAULT_SETTINGS.watch_threshold_min,
       quiz_interval_min: interval >= MIN_INTERVAL_MIN ? interval : DEFAULT_SETTINGS.quiz_interval_min,
       quiz_snap_min: snap >= 0 ? snap : DEFAULT_SETTINGS.quiz_snap_min,
     };
@@ -122,8 +127,17 @@
     return (h1?.textContent || document.title).replace(/\s*-\s*YouTube\s*$/, '').trim();
   }
 
-  function maybeTrigger() {
-    if (!videoId || triggered.has(videoId) || watchedSec < THRESHOLD_SEC) return;
+  // Watching for a while means the video is interesting enough to process.
+  function watchThresholdSec(video) {
+    const threshold = settings.watch_threshold_min * 60;
+    const duration = video.duration;
+    return Number.isFinite(duration) && duration > 0 && duration < threshold
+      ? duration * SHORT_VIDEO_SHARE
+      : threshold;
+  }
+
+  function maybeTrigger(video) {
+    if (!videoId || triggered.has(videoId) || isAdPlaying() || watchedSec < watchThresholdSec(video)) return;
     triggered.add(videoId);
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     console.log(`[EduFilter] watched ${Math.round(watchedSec)} s, sending`, url);
@@ -225,8 +239,8 @@
   }
 
   // Computed once per useful video (and again when the settings change).
-  // Not gated on watch time: a video resumed mid-way may reach a break within
-  // its first minute. The page must already show this video (SPA navigation
+  // Not gated on watch time: a video resumed mid-way may reach a break before
+  // the watch threshold of this session is reached. The page must already show this video (SPA navigation
   // swaps the DOM late), and no ad may be playing (an ad's duration is not
   // the video's).
   function getParts(video) {
@@ -438,7 +452,7 @@
           checkPartBoundary(video, lastPos, video.currentTime);
           lastPos = video.currentTime;
         }
-        maybeTrigger();
+        maybeTrigger(video);
         if (e.type === 'ended' && !isAdPlaying()) maybeShowReminder(video);
         break;
       case 'timeupdate':
@@ -449,7 +463,7 @@
           return;
         }
         accumulate();
-        maybeTrigger();
+        maybeTrigger(video);
         refreshState();
         checkPartBoundary(video, lastPos, video.currentTime);
         lastPos = video.currentTime;

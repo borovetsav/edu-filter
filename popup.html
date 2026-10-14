@@ -46,6 +46,10 @@
   <details>
     <summary>Settings</summary>
 
+    <label class="inline" for="watch_threshold_min">Send a video to Gemini after
+      <input id="watch_threshold_min" type="number" min="1" step="1"> minutes of watching</label>
+    <p class="hint">Only videos you actually keep watching get a summary and quizzes. A video shorter than that counts once 90% of it was watched.</p>
+
     <label class="inline" for="quiz_interval_min">Quiz every
       <input id="quiz_interval_min" type="number" min="5" step="5"> minutes of video</label>
     <label class="inline" for="quiz_snap_min">Move the break to a chapter boundary within &plusmn;

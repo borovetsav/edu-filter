@@ -22,6 +22,19 @@ function flash(text) {
   setTimeout(() => (status.textContent = ''), 1500);
 }
 
+// Every field is saved as soon as it changes: the popup closes on any click
+// outside it, and an edit waiting for the Save button would be lost.
+for (const el of fields) {
+  el.addEventListener('input', () => {
+    chrome.storage.local.set({ [el.id]: readField(el) });
+    flash('Saved');
+  });
+  // Show the value that was actually stored (e.g. the default for an invalid number).
+  el.addEventListener('change', () => {
+    if (el.type === 'number') el.value = readField(el);
+  });
+}
+
 document.getElementById('save').addEventListener('click', async () => {
   const values = Object.fromEntries(fields.map((el) => [el.id, readField(el)]));
   await chrome.storage.local.set(values);
