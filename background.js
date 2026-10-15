@@ -1,8 +1,9 @@
-import { getPrompts, VIDEO_KEY_PREFIX } from './defaults.js';
+import { DEFAULT_SETTINGS, getPrompts, VIDEO_KEY_PREFIX } from './defaults.js';
 
 const GEMINI_URL = 'https://gemini.google.com/app';
 const TAB_LOAD_TIMEOUT_MS = 60_000;
 const MAX_CHAPTERS_IN_PROMPT = 12;
+const MAX_QUIZ_QUESTIONS = 20;
 
 // Per-video state: { status, verdict, title, videoUrl, createdAt, tabId,
 // chatUrl, quizzes }. Kept in storage.local because the service worker can be
@@ -212,6 +213,10 @@ async function requestPartQuiz(videoId, part) {
 
   const titles = part.chapters.slice(0, MAX_CHAPTERS_IN_PROMPT);
   const { prompt_3 } = await getPrompts();
+  const { quiz_questions } = await chrome.storage.local.get('quiz_questions');
+  const questions = Number.isInteger(quiz_questions) && quiz_questions >= 1 && quiz_questions <= MAX_QUIZ_QUESTIONS
+    ? quiz_questions
+    : DEFAULT_SETTINGS.quiz_questions;
   const prompt = fillTemplate(prompt_3, {
     part: part.index + 1,
     total: part.total,
@@ -219,6 +224,7 @@ async function requestPartQuiz(videoId, part) {
     end: formatTime(part.end),
     chapters: titles.length ? `. Topics of this part: ${titles.join('; ')}` : '',
     url: state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`,
+    questions,
   });
 
   // A merged card covers several parts; all of them count as requested.
@@ -278,6 +284,11 @@ const PROMPT_3_DEFAULT_1_5 =
 const PROMPT_3_DEFAULT_1_7 =
     'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then make an INTERACTIVE quiz on that part: use your built-in interactive quiz feature, the one where I click an answer option and immediately see whether it is right, with an explanation. 5 multiple-choice questions. This is important: do NOT write the quiz as plain text, and do NOT list the questions or answers in the message; I want the clickable interactive quiz. Write everything in Russian. Video: {url}';
 
+// The 1.8 default prompt_3 had 5 questions written into it; since 1.9 the
+// number comes from the quiz_questions setting ({questions}).
+const PROMPT_3_DEFAULT_1_8 =
+  'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then make an INTERACTIVE quiz on that part: use your built-in interactive quiz feature, the one where I click an answer option and immediately see whether it is right, with an explanation. Do NOT write the quiz as plain text, and do NOT list the questions or answers in the message. The quiz must check real understanding, not memory of details: 5 multiple-choice questions. No questions about names, dates, exact numbers, wording or who said what. Instead, ask the learner to apply an idea from the video to a new situation or example that was not in the video, to explain why something works or what causes what, to predict what happens if a condition changes, to compare or tell apart two close concepts, or to find the mistake in a plausible but wrong statement. Make the wrong options believable: typical misconceptions or half-right answers that someone who only skimmed the video would pick, all options similar in length. Order the questions from easier to harder. In each explanation, say why the right answer is right, why the tempting wrong answer is wrong, and the timestamp where this is explained. Write everything in Russian. Video: {url}';
+
 // One-time migrations, run only when updating from an older version (not on
 // later updates or unpacked reloads).
 // - From 1.0, which shipped Russian prompts with Russian verdict words: the
@@ -287,6 +298,7 @@ const PROMPT_3_DEFAULT_1_7 =
 // - From 1.2-1.4: see PROMPT_3_DEFAULT_1_2; the saved prompt_2 is unused.
 // - From 1.5-1.6: see PROMPT_3_DEFAULT_1_5.
 // - From 1.7: see PROMPT_3_DEFAULT_1_7.
+// - From 1.8: see PROMPT_3_DEFAULT_1_8.
 chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (reason !== 'update') return;
   await failInterruptedVideos();
@@ -303,6 +315,7 @@ chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   }
   if (isOlderThan(previousVersion, '1.7.0') && prompt_3 === PROMPT_3_DEFAULT_1_5) stale.push('prompt_3');
   if (isOlderThan(previousVersion, '1.8.0') && prompt_3 === PROMPT_3_DEFAULT_1_7) stale.push('prompt_3');
+  if (isOlderThan(previousVersion, '1.9.0') && prompt_3 === PROMPT_3_DEFAULT_1_8) stale.push('prompt_3');
   if (stale.length) {
     await chrome.storage.local.remove(stale);
     console.log('[EduFilter] reset outdated prompts:', stale);

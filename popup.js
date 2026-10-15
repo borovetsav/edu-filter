@@ -14,7 +14,8 @@ function fill(values) {
 function readField(el) {
   if (el.type !== 'number') return el.value;
   const value = Number(el.value);
-  return el.value !== '' && Number.isFinite(value) && value >= Number(el.min) ? value : DEFAULT_SETTINGS[el.id];
+  const inRange = value >= Number(el.min) && (el.max === '' || value <= Number(el.max));
+  return el.value !== '' && Number.isFinite(value) && inRange ? value : DEFAULT_SETTINGS[el.id];
 }
 
 function flash(text) {

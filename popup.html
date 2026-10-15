@@ -155,12 +155,16 @@
           <label for="quiz_snap_min">Snap to a chapter within &plusmn;</label>
           <span class="num"><input id="quiz_snap_min" type="number" min="0" step="1"> min</span>
         </div>
+        <div class="field">
+          <label for="quiz_questions">Questions per quiz</label>
+          <span class="num"><input id="quiz_questions" type="number" min="1" max="20" step="1"></span>
+        </div>
         <p class="hint">A break fires when the video reaches it, by playing or by skipping ahead. Videos shorter than about 1.5&times; the interval get one card for the whole video, near its end.</p>
 
         <div class="group-title">Prompts</div>
         <label class="prompt-label" for="prompt_1">Classification <span class="hint">(the video URL is appended)</span></label>
         <textarea id="prompt_1"></textarea>
-        <label class="prompt-label" for="prompt_3">Summary and quiz for a stretch <span class="hint">({start} {end} {chapters} {url})</span></label>
+        <label class="prompt-label" for="prompt_3">Summary and quiz for a stretch <span class="hint">({start} {end} {chapters} {url} {questions})</span></label>
         <textarea id="prompt_3"></textarea>
 
         <div class="row">
