@@ -2,11 +2,12 @@
 // the home page to /watch does not reload the page, so a script limited to
 // /watch would never start.
 //
-// - Counts real playback time and asks the background to process the video
-//   once it has been watched for watch_threshold_min minutes (or, if the
-//   video is shorter than that, once SHORT_VIDEO_SHARE of it was watched).
-// - Places quiz breaks in useful videos every ~N minutes of the timeline
-//   (moved to chapter starts when possible). When the playhead moves forward
+// - Places quiz breaks every ~N minutes of the timeline (moved to chapter
+//   starts when possible).
+// - Asks the background to classify the video (useful or not) once the
+//   playhead gets within VERDICT_LEAD_SEC of the first break (or of the
+//   end-of-video card, if there is no break), so the verdict is ready when
+//   the first card is due. Videos dropped earlier are never sent to Gemini. When the playhead moves forward
 //   past a break, by playback or by seeking, a card in the top right corner
 //   offers a quiz on the stretch since the previous break; the video keeps
 //   playing.
@@ -19,11 +20,17 @@
   const CARD_ID = 'edu-filter-card';
 
   // Set in the popup. Keep in sync with DEFAULT_SETTINGS in defaults.js.
-  const DEFAULT_SETTINGS = { watch_threshold_min: 10, quiz_interval_min: 40, quiz_snap_min: 10 };
+  const DEFAULT_SETTINGS = { quiz_interval_min: 40 };
   const MIN_INTERVAL_MIN = 5;
-  const MIN_THRESHOLD_MIN = 1;
-  // A video shorter than the threshold counts as watched at this share of it.
-  const SHORT_VIDEO_SHARE = 0.9;
+  // A break moves to a chapter start at most this share of the interval away,
+  // so a quiz does not cut a topic in half (40 min interval: within 10 min).
+  const SNAP_SHARE = 0.25;
+  // The verdict takes Gemini about a minute; asking this far ahead of the
+  // first card has it ready in time.
+  const VERDICT_LEAD_SEC = 120;
+  // Real playback needed before a video is sent at all, so that opening a
+  // video and jumping past its first break does not send it right away.
+  const MIN_WATCH_SEC = 60;
   // Without chapters, wait this long after navigation before settling on
   // equal parts: the chapter list may not have rendered yet.
   const CHAPTERS_GRACE_MS = 30_000;
@@ -96,13 +103,9 @@
   // ---------- Settings ----------
 
   function applySettings(stored) {
-    const threshold = Number(stored.watch_threshold_min);
     const interval = Number(stored.quiz_interval_min);
-    const snap = Number(stored.quiz_snap_min);
     settings = {
-      watch_threshold_min: threshold >= MIN_THRESHOLD_MIN ? threshold : DEFAULT_SETTINGS.watch_threshold_min,
       quiz_interval_min: interval >= MIN_INTERVAL_MIN ? interval : DEFAULT_SETTINGS.quiz_interval_min,
-      quiz_snap_min: snap >= 0 ? snap : DEFAULT_SETTINGS.quiz_snap_min,
     };
     parts = undefined; // recompute the breaks with the new settings
   }
@@ -129,20 +132,22 @@
     return (h1?.textContent || document.title).replace(/\s*-\s*YouTube\s*$/, '').trim();
   }
 
-  // Watching for a while means the video is interesting enough to process.
-  function watchThresholdSec(video) {
-    const threshold = settings.watch_threshold_min * 60;
-    const duration = video.duration;
-    return Number.isFinite(duration) && duration > 0 && duration < threshold
-      ? duration * SHORT_VIDEO_SHARE
-      : threshold;
+  // Timeline position at which the video is sent for a verdict: shortly
+  // before the first card is due. Null while the breaks are not known yet.
+  function verdictPosition(video) {
+    const firstParts = getParts(video);
+    if (firstParts) return firstParts[0].end - VERDICT_LEAD_SEC;
+    if (parts === null) return video.duration - REMINDER_BEFORE_END_SEC - VERDICT_LEAD_SEC;
+    return null;
   }
 
   function maybeTrigger(video) {
-    if (!videoId || triggered.has(videoId) || isAdPlaying() || watchedSec < watchThresholdSec(video)) return;
+    if (!videoId || triggered.has(videoId) || isAdPlaying() || watchedSec < MIN_WATCH_SEC) return;
+    const at = verdictPosition(video);
+    if (at == null || video.currentTime < at) return;
     triggered.add(videoId);
     const url = `https://www.youtube.com/watch?v=${videoId}`;
-    console.log(`[EduFilter] watched ${Math.round(watchedSec)} s, sending`, url);
+    console.log(`[EduFilter] at ${formatTime(video.currentTime)}, sending for a verdict`, url);
     send({ type: 'VIDEO_WATCHED', url, videoId, title: videoTitle() }).catch((err) => {
       console.warn('[EduFilter] failed to send the message:', err);
       triggered.delete(videoId); // retry on the next timeupdate
@@ -241,14 +246,14 @@
     });
   }
 
-  // Computed once per useful video (and again when the settings change).
-  // Not gated on watch time: a video resumed mid-way may reach a break before
-  // the watch threshold of this session is reached. The page must already show this video (SPA navigation
-  // swaps the DOM late), and no ad may be playing (an ad's duration is not
-  // the video's).
+  // Computed once per video (and again when the settings change), before the
+  // verdict: the first break decides when the video is sent to Gemini. Cards
+  // are shown only in useful videos. The page must already show this video
+  // (SPA navigation swaps the DOM late), and no ad may be playing (an ad's
+  // duration is not the video's).
   function getParts(video) {
     if (parts !== undefined) return parts;
-    if (!isUseful() || isAdPlaying() || !Number.isFinite(video.duration)) return null;
+    if (isAdPlaying() || !Number.isFinite(video.duration)) return null;
     if (document.querySelector('ytd-watch-flexy')?.getAttribute('video-id') !== videoId) return null;
 
     const chapters = readChapters(video.duration);
@@ -256,7 +261,7 @@
       video.duration,
       chapters,
       settings.quiz_interval_min * 60,
-      settings.quiz_snap_min * 60
+      settings.quiz_interval_min * 60 * SNAP_SHARE
     );
     if (result && !chapters.length && performance.now() - resetAt < CHAPTERS_GRACE_MS) return result;
 

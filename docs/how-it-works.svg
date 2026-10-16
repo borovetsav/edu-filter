@@ -9,8 +9,8 @@
   <!-- 1. Watch -->
   <rect x="24" y="40" width="190" height="112" rx="14" fill="#fdecea" stroke="#f28b82"/>
   <text x="119" y="76" text-anchor="middle" font-size="15" font-weight="700" fill="#202124">1. You watch</text>
-  <text x="119" y="102" text-anchor="middle" font-size="13" fill="#3c4043">a YouTube video for</text>
-  <text x="119" y="121" text-anchor="middle" font-size="13" fill="#3c4043">N minutes (default 10)</text>
+  <text x="119" y="102" text-anchor="middle" font-size="13" fill="#3c4043">up to ~2 min before</text>
+  <text x="119" y="121" text-anchor="middle" font-size="13" fill="#3c4043">the first quiz break</text>
 
   <!-- 2. Verdict -->
   <rect x="262" y="40" width="190" height="112" rx="14" fill="#e8f0fe" stroke="#8ab4f8"/>

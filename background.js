@@ -316,6 +316,9 @@ chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (isOlderThan(previousVersion, '1.7.0') && prompt_3 === PROMPT_3_DEFAULT_1_5) stale.push('prompt_3');
   if (isOlderThan(previousVersion, '1.8.0') && prompt_3 === PROMPT_3_DEFAULT_1_7) stale.push('prompt_3');
   if (isOlderThan(previousVersion, '1.9.0') && prompt_3 === PROMPT_3_DEFAULT_1_8) stale.push('prompt_3');
+  // Settings that were removed: since 1.10 the verdict is asked before the
+  // first break; since 1.11 breaks snap to chapters by a share of the interval.
+  if (isOlderThan(previousVersion, '1.11.0')) await chrome.storage.local.remove(['watch_threshold_min', 'quiz_snap_min']);
   if (stale.length) {
     await chrome.storage.local.remove(stale);
     console.log('[EduFilter] reset outdated prompts:', stale);

@@ -8,7 +8,7 @@
 ![No API key](https://img.shields.io/badge/API%20key-not%20needed-lightgrey)
 ![Vanilla JS](https://img.shields.io/badge/JavaScript-vanilla-F7DF1E?logo=javascript&logoColor=black)
 
-Watching a 2-hour lecture is easy; remembering it is not. Edu Filter checks whether the video you keep watching is educational, and every ~40 minutes offers a summary and a quiz on the part you just watched, so you review the material while it's fresh. Entertainment is left alone.
+Watching a 2-hour lecture is easy; remembering it is not. Every ~40 minutes of a lecture, Edu Filter offers a summary and a quiz on the part you just watched, so you review the material while it's fresh. Entertainment is left alone.
 
 ![Quiz card on a YouTube lecture](docs/quiz-card.png)
 
@@ -16,9 +16,9 @@ Watching a 2-hour lecture is easy; remembering it is not. Edu Filter checks whet
 
 ![How it works](docs/how-it-works.svg)
 
-1. **You watch a video** for N minutes (default 10). A video you drop after a couple of minutes is not worth remembering.
-2. **Gemini decides** in a background tab whether the video is `USEFUL` or `ENTERTAINMENT`. You keep watching.
-3. **At each quiz break**, a card appears in the top right corner. Breaks are every ~40 minutes of the video's timeline and snap to the nearest chapter. The video keeps playing. Skipping ahead past a break also shows the card: one card covers every stretch you skipped.
+1. **You watch a video.** Quiz breaks are placed every ~40 minutes of its timeline.
+2. **About 2 minutes before the first break**, Gemini decides in a background tab whether the video is `USEFUL` or `ENTERTAINMENT`. You keep watching. A video you drop earlier is never sent.
+3. **At each quiz break** of a useful video, a card appears in the top right corner. Breaks move to the nearest chapter start, so a quiz doesn't cut a topic in half. The video keeps playing. Skipping ahead past a break also shows the card: one card covers every stretch you skipped.
 4. **Click "Summary and quiz"**. The same Gemini chat gets a request for that stretch only: a summary broken down by timestamps and a 7-question **interactive quiz**: Gemini's built-in quiz, where you click an answer and see right away whether it's correct. The questions check understanding rather than memory: applying an idea to a new example, explaining why, telling close concepts apart.
 
 Short videos get a single card for the whole video near the end.
@@ -44,9 +44,7 @@ Click the extension icon → **Settings**. Changes are saved as you type.
 
 | Setting | Default | |
 |---|---|---|
-| Send a video to Gemini after | 10 min | Minutes of actual playback. Pauses, seeking and ads don't count. |
-| Quiz every | 40 min | Distance between breaks on the video's timeline. |
-| Move the break to a chapter boundary within ± | 10 min | Breaks snap to a chapter start, so a quiz doesn't cut a topic in half. |
+| Quiz every | ~40 min | Distance between breaks on the video's timeline. The video is sent to Gemini about 2 minutes before the first one. |
 | Questions per quiz | 7 | Number of questions in each quiz (1-20). |
 | Prompt 1 | | Classification. Must ask for `USEFUL` or `ENTERTAINMENT`. |
 | Prompt 2 | | Summary and quiz for a stretch. Placeholders: `{start}` `{end}` `{chapters}` `{url}` `{questions}`. Answers are in Russian by default; change that line for another language. |

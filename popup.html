@@ -139,27 +139,16 @@
     <details>
       <summary>Settings</summary>
       <div class="settings">
-        <div class="group-title">When to send a video</div>
-        <div class="field">
-          <label for="watch_threshold_min">Send to Gemini after watching</label>
-          <span class="num"><input id="watch_threshold_min" type="number" min="1" step="1"> min</span>
-        </div>
-        <p class="hint">Only videos you keep watching get summaries and quizzes. A shorter video counts once 90% of it was watched.</p>
-
         <div class="group-title">Quiz breaks</div>
         <div class="field">
           <label for="quiz_interval_min">Quiz every</label>
-          <span class="num"><input id="quiz_interval_min" type="number" min="5" step="5"> min</span>
-        </div>
-        <div class="field">
-          <label for="quiz_snap_min">Snap to a chapter within &plusmn;</label>
-          <span class="num"><input id="quiz_snap_min" type="number" min="0" step="1"> min</span>
+          <span class="num">~ <input id="quiz_interval_min" type="number" min="5" step="5"> min</span>
         </div>
         <div class="field">
           <label for="quiz_questions">Questions per quiz</label>
           <span class="num"><input id="quiz_questions" type="number" min="1" max="20" step="1"></span>
         </div>
-        <p class="hint">A break fires when the video reaches it, by playing or by skipping ahead. Videos shorter than about 1.5&times; the interval get one card for the whole video, near its end.</p>
+        <p class="hint">Breaks move to the nearest chapter start, so a quiz doesn't cut a topic in half. A short video gets one quiz near its end. Gemini checks whether a video is useful about 2 minutes before its first quiz.</p>
 
         <div class="group-title">Prompts</div>
         <label class="prompt-label" for="prompt_1">Classification <span class="hint">(the video URL is appended)</span></label>

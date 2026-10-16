@@ -21,15 +21,14 @@ export async function getPrompts() {
   return { ...DEFAULT_PROMPTS, ...stored };
 }
 
-// watch_threshold_min: minutes of actual watching before a video is sent to
-// Gemini (a shorter video: once 90% of it was watched).
+// A video is sent to Gemini for a verdict shortly before its first break, so
+// there is no separate setting for that.
 // Quiz breaks in useful videos: one every ~quiz_interval_min minutes of the
-// video timeline, moved to the nearest chapter start within quiz_snap_min.
+// video timeline, moved to the nearest chapter start when one is close
+// (see SNAP_SHARE in content_yt.js).
 // quiz_questions: number of questions in each quiz.
 export const DEFAULT_SETTINGS = {
-  watch_threshold_min: 10,
   quiz_interval_min: 40,
-  quiz_snap_min: 10,
   quiz_questions: 7,
 };
 
