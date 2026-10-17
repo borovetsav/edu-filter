@@ -7,6 +7,7 @@
 ![Gemini](https://img.shields.io/badge/Google-Gemini-8E75B2?logo=googlegemini&logoColor=white)
 ![No API key](https://img.shields.io/badge/API%20key-not%20needed-lightgrey)
 ![Free](https://img.shields.io/badge/price-free-brightgreen)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 
 https://github.com/user-attachments/assets/fd4e0c6f-3b4d-407b-8fb6-6d99a0d70441
 
@@ -97,3 +98,7 @@ defaults.js         Default prompts and settings
 
 - Needs a signed-in Gemini session; prompts and answers stay in your Gemini history.
 - Gemini and YouTube change their pages; selectors may need updates.
+
+## License
+
+[MIT](LICENSE)
