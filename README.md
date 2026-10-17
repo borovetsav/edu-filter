@@ -30,11 +30,13 @@ We spend hours on great lectures, and within days most of it is gone. Education 
 
 ## Install
 
-1. `git clone https://github.com/borovetsav/edu-filter.git`
-2. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and select the folder.
+1. Download [**edu-filter.zip**](https://github.com/borovetsav/edu-filter/releases/latest/download/edu-filter.zip) and unzip it.
+2. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and select the unzipped folder.
 3. Sign in to [gemini.google.com](https://gemini.google.com) in the same Chrome profile.
 
-That's it: no API key, no server, free. The extension uses the Gemini web app in your own browser.
+That's it: no API key, no server, free. The extension uses the Gemini web app in your own browser. Made for Chrome; other Chromium browsers (Edge, Brave, Arc) should work too.
+
+If Edu Filter helped a lecture stick, a ⭐ helps other learners find it.
 
 ## Screenshots
 

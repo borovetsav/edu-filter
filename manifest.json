@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Edu Filter",
   "version": "1.12.0",
-  "description": "Tracks YouTube watch time and uses Gemini to turn useful videos into summaries and quizzes.",
+  "description": "Remember the lectures you watch: quiz breaks for long YouTube lectures, with a summary and an interactive quiz in Gemini.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
