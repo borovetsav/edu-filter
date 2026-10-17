@@ -52,7 +52,7 @@ Click the extension icon → **Settings**. Changes are saved as you type.
 |---|---|---|
 | Quiz every | ~40 min | Distance between breaks. Breaks move to the nearest chapter start, so a quiz doesn't cut a topic in half. |
 | Questions per quiz | 7 | 1-20. |
-| Prompts | | Classification (must ask for `USEFUL` or `ENTERTAINMENT`) and summary + quiz (placeholders `{start}` `{end}` `{chapters}` `{url}` `{questions}`). Answers are in Russian by default; change that line for another language. |
+| Prompts | | Classification (must ask for `USEFUL` or `ENTERTAINMENT`) and summary + quiz (placeholders `{start}` `{end}` `{chapters}` `{url}` `{questions}`). Answers are in English by default; change that line for another language. |
 
 Skipping ahead past a break also shows the card; one card covers every stretch you skipped. Short videos get one card near the end.
 
