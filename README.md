@@ -98,7 +98,7 @@ defaults.js         Default prompts and settings
 
 ## Limitations
 
-- Needs a signed-in Gemini session; prompts and answers stay in your Gemini history.
+- Needs a signed-in Gemini session; prompts and answers stay in your Gemini history. Nothing is sent anywhere else: see the [privacy policy](PRIVACY.md).
 - Gemini and YouTube change their pages; selectors may need updates.
 
 ## License
