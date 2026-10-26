@@ -107,7 +107,8 @@
     .field { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
     .field label { flex: 1; }
     .num { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
-    #answer_language { width: 150px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+    .lang { display: flex; gap: 6px; }
+    #answer_language { width: 110px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
     select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
     .num input { width: 58px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; text-align: right; }
     input:focus, textarea:focus, select:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: transparent; }
@@ -166,18 +167,19 @@
           <span class="num"><input id="quiz_questions" type="number" min="1" max="20" step="1"></span>
         </div>
         <div class="field">
-          <label for="answer_language">Answer language</label>
-          <input id="answer_language" type="text" list="languages" placeholder="English">
-          <datalist id="languages">
-            <option value="English"></option>
-            <option value="Russian"></option>
-            <option value="Ukrainian"></option>
-            <option value="Spanish"></option>
-            <option value="German"></option>
-            <option value="French"></option>
-            <option value="Portuguese"></option>
-            <option value="Chinese"></option>
-          </datalist>
+          <label for="answer_language_pick">Answer language</label>
+          <span class="lang">
+            <select id="answer_language_pick">
+              <option value="English">English</option>
+              <option value="Chinese">Chinese</option>
+              <option value="Hindi">Hindi</option>
+              <option value="Spanish">Spanish</option>
+              <option value="Arabic">Arabic</option>
+              <option value="Russian">Russian</option>
+              <option value="">Other…</option>
+            </select>
+            <input id="answer_language" type="text" placeholder="Any language" hidden>
+          </span>
         </div>
         <div class="field">
           <label for="check_mode">Gemini opens</label>

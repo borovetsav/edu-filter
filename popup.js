@@ -6,8 +6,33 @@ const DEFAULTS = { ...DEFAULT_PROMPTS, ...DEFAULT_SETTINGS };
 const fields = Object.keys(DEFAULTS).map((key) => document.getElementById(key));
 const status = document.getElementById('status');
 
+// Answer language: a list of common languages, or "Other…" to type any.
+// The text field holds the stored value; the list only fills it in.
+const languageField = document.getElementById('answer_language');
+const languagePick = document.getElementById('answer_language_pick');
+const PICKABLE = [...languagePick.options].map((o) => o.value).filter(Boolean);
+
+function syncLanguagePick() {
+  const known = PICKABLE.includes(languageField.value);
+  languagePick.value = known ? languageField.value : '';
+  languageField.hidden = known;
+}
+
+languagePick.addEventListener('change', () => {
+  if (!languagePick.value) {
+    languageField.value = '';
+    languageField.hidden = false;
+    languageField.focus();
+    return;
+  }
+  languageField.value = languagePick.value;
+  languageField.hidden = true;
+  languageField.dispatchEvent(new Event('input')); // saved like a typed value
+});
+
 function fill(values) {
   for (const el of fields) el.value = values[el.id];
+  syncLanguagePick();
 }
 
 // Numbers are stored as numbers; an empty or invalid one falls back to its default.
