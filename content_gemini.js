@@ -420,7 +420,7 @@
   async function sendExtraPrompt({ prompt, label, meta }) {
     const result = (status, detail) => {
       showStatus(`${label}: ${status}${detail ? `\n${detail}` : ''}`);
-      notify({ type: 'GEMINI_PROMPT_RESULT', label, status, detail, meta });
+      notify({ type: 'GEMINI_PROMPT_RESULT', label, status, detail, meta, chatUrl: location.href });
     };
     try {
       // A chat reopened from its URL renders its history a moment after the

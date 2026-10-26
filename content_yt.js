@@ -4,15 +4,18 @@
 //
 // - Places quiz breaks every ~N minutes of the timeline (moved to chapter
 //   starts when possible).
-// - Asks the background to classify the video (useful or not) once the
-//   playhead gets within VERDICT_LEAD_SEC of the first break (or of the
-//   end-of-video card, if there is no break), so the verdict is ready when
-//   the first card is due. Videos dropped earlier are never sent to Gemini. When the playhead moves forward
-//   past a break, by playback or by seeking, a card in the top right corner
-//   offers a quiz on the stretch since the previous break; the video keeps
-//   playing.
-// - Near the end of a useful video too short for a break, offers a summary
-//   and quiz for the whole video.
+// - In 'auto' check mode, asks the background to classify the video (useful
+//   or not) once the playhead gets within VERDICT_LEAD_SEC of the first break
+//   (or of the end-of-video card, if there is no break), so the verdict is
+//   ready when the first card is due. Videos dropped earlier are never sent
+//   to Gemini. In 'request' mode nothing is sent until a quiz is asked for.
+// - When the playhead moves forward past a break, by playback or by seeking,
+//   a card in the top right corner offers a quiz on the stretch since the
+//   previous break; the video keeps playing. The verdict only changes the
+//   card's wording; "Not for this video" on the card (or the popup) turns
+//   the cards off for that video.
+// - Near the end of a video too short for a break, offers a summary and quiz
+//   for the whole video.
 (() => {
   const MAX_TICK_SEC = 1.5; // ignore jumps (laptop sleep, throttled tab, etc.)
   const REMINDER_BEFORE_END_SEC = 15;
@@ -20,7 +23,7 @@
   const CARD_ID = 'edu-filter-card';
 
   // Set in the popup. Keep in sync with DEFAULT_SETTINGS in defaults.js.
-  const DEFAULT_SETTINGS = { quiz_interval_min: 40 };
+  const DEFAULT_SETTINGS = { quiz_interval_min: 40, check_mode: 'request' };
   const MIN_INTERVAL_MIN = 5;
   // A break moves to a chapter start at most this share of the interval away,
   // so a quiz does not cut a topic in half (40 min interval: within 10 min).
@@ -31,6 +34,8 @@
   // Real playback needed before a video is sent at all, so that opening a
   // video and jumping past its first break does not send it right away.
   const MIN_WATCH_SEC = 60;
+  // Shortest video that gets the end-of-video card without a verdict.
+  const MIN_REMINDER_SEC = 10 * 60;
   // Without chapters, wait this long after navigation before settling on
   // equal parts: the chapter list may not have rendered yet.
   const CHAPTERS_GRACE_MS = 30_000;
@@ -39,6 +44,7 @@
   let watchedSec = 0;
   let lastTick = null; // performance.now() of the last counted playback moment
   let videoState = null; // cached GET_VIDEO_STATUS answer for videoId
+  let stateLoaded = false; // videoState has been fetched at least once for videoId
   let lastStateFetch = 0;
   let settings = { ...DEFAULT_SETTINGS };
   let parts; // undefined: not computed yet, null: no quiz breaks in this video
@@ -86,6 +92,7 @@
     watchedSec = 0;
     lastTick = null;
     videoState = null;
+    stateLoaded = false;
     lastStateFetch = 0;
     parts = undefined;
     lastPos = null;
@@ -106,6 +113,7 @@
     const interval = Number(stored.quiz_interval_min);
     settings = {
       quiz_interval_min: interval >= MIN_INTERVAL_MIN ? interval : DEFAULT_SETTINGS.quiz_interval_min,
+      check_mode: stored.check_mode === 'auto' ? 'auto' : 'request',
     };
     parts = undefined; // recompute the breaks with the new settings
   }
@@ -142,6 +150,7 @@
   }
 
   function maybeTrigger(video) {
+    if (settings.check_mode !== 'auto' || !stateLoaded || videoState?.quiz === 'off') return;
     if (!videoId || triggered.has(videoId) || isAdPlaying() || watchedSec < MIN_WATCH_SEC) return;
     const at = verdictPosition(video);
     if (at == null || video.currentTime < at) return;
@@ -163,10 +172,20 @@
     if (!id || now - lastStateFetch < STATE_REFRESH_MS) return;
     lastStateFetch = now;
     const state = await send({ type: 'GET_VIDEO_STATUS', videoId: id }).catch(() => null);
-    if (id === videoId) videoState = state;
+    if (id === videoId) {
+      videoState = state;
+      stateLoaded = true;
+    }
   }
 
-  const isUseful = () => videoState?.verdict === 'USEFUL';
+  // Whether break cards are shown. The user's choice for this video (card or
+  // popup) wins; otherwise 'request' mode offers them in every video, and
+  // 'auto' mode once Gemini has answered, whatever the verdict.
+  function quizzesOn() {
+    if (!stateLoaded || videoState?.quiz === 'off') return false;
+    if (videoState?.quiz === 'on' || settings.check_mode !== 'auto') return true;
+    return !!videoState && videoState.status !== 'PENDING';
+  }
 
   // ---------- Splitting long videos ----------
 
@@ -247,10 +266,10 @@
   }
 
   // Computed once per video (and again when the settings change), before the
-  // verdict: the first break decides when the video is sent to Gemini. Cards
-  // are shown only in useful videos. The page must already show this video
-  // (SPA navigation swaps the DOM late), and no ad may be playing (an ad's
-  // duration is not the video's).
+  // verdict: the first break decides when the video is sent to Gemini (in
+  // 'auto' mode). Cards are shown while quizzesOn(). The page must already
+  // show this video (SPA navigation swaps the DOM late), and no ad may be
+  // playing (an ad's duration is not the video's).
   function getParts(video) {
     if (parts !== undefined) return parts;
     if (isAdPlaying() || !Number.isFinite(video.duration)) return null;
@@ -286,17 +305,18 @@
   // The position the page opens at (e.g. YouTube resuming) is not a move;
   // checkMissedParts() covers it.
   function checkPartBoundary(video, prev, pos) {
-    if (prev == null || pos <= prev || !isUseful()) return;
+    if (prev == null || pos <= prev || !quizzesOn()) return;
 
     offerParts((getParts(video) ?? []).filter((part) => prev < part.end && pos >= part.end));
   }
 
-  // Breaks passed before the video was known to be useful never fired: the
-  // verdict arrives minutes after the video was sent to Gemini, and the page
-  // may open (or resume) past them. Once the breaks are known, those passed
-  // and not yet requested (videoState.quizzes) are offered in one card.
+  // Breaks passed before the cards were on never fired: the verdict arrives
+  // minutes after the video was sent to Gemini, the user may turn the cards
+  // on later, and the page may open (or resume) past them. Once the breaks
+  // are known, those passed and not yet requested (videoState.quizzes) are
+  // offered in one card.
   function checkMissedParts(video, pos) {
-    if (!videoId || caughtUp.has(videoId) || !isUseful()) return;
+    if (!videoId || caughtUp.has(videoId) || !quizzesOn()) return;
     getParts(video);
     if (parts === undefined) return; // not final yet (e.g. chapters still loading)
     caughtUp.add(videoId);
@@ -424,17 +444,27 @@
     if (host) (document.fullscreenElement || document.body).appendChild(host);
   });
 
+  // Tells the background (and this page's cached state) that the user chose
+  // to turn the cards on or off for this video.
+  function setQuiz(id, quiz) {
+    if (id === videoId) videoState = { ...videoState, quiz };
+    return send({ type: 'SET_VIDEO_QUIZ', videoId: id, quiz, title: videoTitle() });
+  }
+
   function showPartCard(part) {
     const id = videoId;
+    const title = videoTitle();
     const isLast = part.index === part.total - 1;
     const topics = part.chapters.slice(0, 3).join('; ');
     showCard({
       title:
-        part.total === 1
-          ? 'Almost done: review the video'
-          : isLast
-            ? 'Almost done: review this part'
-            : 'Review what you just watched',
+        videoState?.verdict === 'FUN' && videoState.quiz !== 'on'
+          ? 'Looks like entertainment. Quiz anyway?'
+          : part.total === 1
+            ? 'Almost done: review the video'
+            : isLast
+              ? 'Almost done: review this part'
+              : 'Review what you just watched',
       lines: [
         `Get a summary and a quiz for ${formatTime(part.start)} – ${formatTime(part.end)} of the video to lock in the material. The video keeps playing.`,
         ...(topics ? [`Topics: ${topics}${part.chapters.length > 3 ? '; ...' : ''}`] : []),
@@ -443,20 +473,23 @@
         {
           label: 'Summary and quiz',
           primary: true,
-          onClick: () => send({ type: 'REQUEST_PART_QUIZ', videoId: id, part }).catch(() => {}),
+          onClick: () => send({ type: 'REQUEST_PART_QUIZ', videoId: id, title, part }).catch(() => {}),
         },
         { label: 'Later', onClick: () => {} },
+        { label: 'Not for this video', onClick: () => setQuiz(id, 'off').catch(() => {}) },
       ],
     });
   }
 
-  // Near the end of a useful video too short for a quiz break: the whole
-  // video is one stretch.
+  // Near the end of a video too short for a quiz break: the whole video is
+  // one stretch. Without a verdict or the user's say-so, only videos of at
+  // least MIN_REMINDER_SEC get it, so music and clips are left alone.
   function maybeShowReminder(video) {
     const id = videoId;
-    if (!id || reminded.has(id) || !isUseful() || isAdPlaying()) return;
+    if (!id || reminded.has(id) || !quizzesOn() || isAdPlaying()) return;
     // Until the split is known (parts === undefined), don't assume there is none.
     if (getParts(video) || parts === undefined) return;
+    if (!videoState?.verdict && videoState?.quiz !== 'on' && video.duration < MIN_REMINDER_SEC) return;
     const left = video.duration - video.currentTime;
     if (!Number.isFinite(left) || left > REMINDER_BEFORE_END_SEC) return;
 
@@ -528,6 +561,14 @@
     if (currentVideoId() !== videoId) reset();
   };
 
+  // The popup asks which video this tab shows, to offer the per-video switch.
+  const onMessage = (msg, sender, sendResponse) => {
+    if (msg?.type !== 'EDU_GET_VIDEO') return;
+    const id = currentVideoId();
+    sendResponse(id ? { videoId: id, title: videoTitle() } : null);
+  };
+  chrome.runtime.onMessage.addListener(onMessage);
+
   // Media events do not bubble, so they are caught in the capture phase;
   // this also survives YouTube replacing the <video> element.
   for (const type of MEDIA_EVENTS) document.addEventListener(type, onMediaEvent, true);
@@ -539,6 +580,11 @@
     for (const type of MEDIA_EVENTS) document.removeEventListener(type, onMediaEvent, true);
     document.removeEventListener('yt-navigate-finish', onNavigate);
     window.removeEventListener('popstate', onNavigate);
+    try {
+      chrome.runtime.onMessage.removeListener(onMessage);
+    } catch {
+      // context already invalidated
+    }
   }
 
   reset();

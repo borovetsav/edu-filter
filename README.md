@@ -24,9 +24,8 @@ We spend hours on great lectures, and within days most of it is gone. Education 
 ![How it works](docs/how-it-works.svg)
 
 1. **Watch** any lecture on YouTube.
-2. **Gemini checks** in a background tab whether it's educational, about 2 minutes before the first break. Entertainment is left alone.
-3. **A card appears at each break.** The video keeps playing.
-4. **Click "Summary and quiz":** a summary by timestamps and a clickable quiz that tests understanding, not recall.
+2. **A card appears at each break.** The video keeps playing. Not a lecture? Click **Not for this video**, or switch quizzes off for it in the popup.
+3. **Click "Summary and quiz":** Gemini opens with a summary by timestamps and a clickable quiz that tests understanding, not recall. Gemini opens only at this point, when you ask for a quiz.
 
 ## Install
 
@@ -55,13 +54,14 @@ Click the extension icon → **Settings**. Changes are saved as you type.
 |---|---|---|
 | Quiz every | ~40 min | Distance between breaks. Breaks move to the nearest chapter start, so a quiz doesn't cut a topic in half. |
 | Questions per quiz | 7 | 1-20. |
+| Gemini opens | only when I ask for a quiz | Or **to check every video**: Gemini checks in a background tab whether a video is educational, about 2 minutes before the first break, and the tab closes once it answers. Cards then wait for the verdict. An entertainment video still gets a card, worded "Quiz anyway?". |
 | Prompts | | Classification (must ask for `USEFUL` or `ENTERTAINMENT`) and summary + quiz (placeholders `{start}` `{end}` `{chapters}` `{url}` `{questions}`). Answers are in English by default; change that line for another language. |
 
-Skipping ahead past a break also shows the card; one card covers every stretch you skipped. Short videos get one card near the end.
+Skipping ahead past a break also shows the card; one card covers every stretch you skipped. Videos too short for a break get one card near the end, if they are at least 10 minutes long, Gemini called them educational, or you turned quizzes on in the popup.
 
 ## Troubleshooting
 
-- **Nothing happens on YouTube.** After reloading the extension, reload the YouTube tab too. A video is processed once; use **Send again** in the popup to redo it.
+- **Nothing happens on YouTube.** After reloading the extension, reload the YouTube tab too. Quizzes may be off for this video: open the popup on its tab and click **Turn on**. A video is checked once; use **Send again** in the popup to redo it.
 - **The Gemini tab shows a status panel** in its bottom-left corner with the current step. Logs are in DevTools → Console, filter `[EduFilter]`.
 - **"Timed out waiting for the input field".** You're signed out of Gemini, or a dialog covers the input.
 

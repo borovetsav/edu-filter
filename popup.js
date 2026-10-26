@@ -66,6 +66,13 @@ const STATUS_CHIP = {
   ERROR: { text: 'Error', cls: 'error' },
 };
 
+// Videos never sent for a verdict ('request' check mode) have no status.
+function statusChip(v) {
+  if (v.quiz === 'off') return { text: 'Quizzes off', cls: '' };
+  if (!v.status) return { text: 'Quizzes on', cls: 'useful' };
+  return STATUS_CHIP[v.status] ?? { text: v.status, cls: '' };
+}
+
 async function getVideos() {
   const all = await chrome.storage.local.get(null);
   return Object.entries(all)
@@ -93,7 +100,7 @@ function quizSummary(v) {
     failed && `${failed} failed`,
   ].filter(Boolean);
   if (parts.length) return parts.join(', ');
-  return v.verdict === 'USEFUL' ? 'quiz at each break' : '';
+  return v.verdict === 'USEFUL' && v.quiz !== 'off' ? 'quiz at each break' : '';
 }
 
 function renderVideo(v) {
@@ -108,7 +115,7 @@ function renderVideo(v) {
   link.textContent = v.title || v.videoId;
   link.title = link.textContent;
 
-  const s = STATUS_CHIP[v.status] ?? { text: v.status, cls: '' };
+  const s = statusChip(v);
   const meta = document.createElement('div');
   meta.className = 'meta';
   const chip = document.createElement('span');
@@ -160,7 +167,8 @@ function renderVideo(v) {
 
 function renderStats(videos) {
   const set = (id, value) => (document.getElementById(id).textContent = value);
-  set('stat-useful', videos.filter((v) => v.verdict === 'USEFUL').length);
+  // In 'request' mode there is no verdict: a video with a quiz counts too.
+  set('stat-useful', videos.filter((v) => v.verdict === 'USEFUL' || Object.keys(v.quizzes ?? {}).length).length);
   set('stat-quizzes', videos.reduce((n, v) => n + countQuizzes(v.quizzes, 'DONE'), 0));
   set(
     'stat-pending',
@@ -197,10 +205,58 @@ clearBtn.addEventListener('click', async () => {
   await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith(VIDEO_KEY_PREFIX)));
 });
 
+// ---------- Current video ----------
+
+// The YouTube tab's script says which video it shows; no "tabs" permission
+// is needed for that. Anything else (another site, a YouTube tab opened
+// before the extension was loaded) just hides the block.
+const current = document.getElementById('current');
+const currentToggle = document.getElementById('current-toggle');
+let currentVideo = null; // { videoId, title }
+
+async function loadCurrentVideo() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    currentVideo = tab ? await chrome.tabs.sendMessage(tab.id, { type: 'EDU_GET_VIDEO' }) : null;
+  } catch {
+    currentVideo = null;
+  }
+}
+
+// Same rule as quizzesOn() in content_yt.js.
+function cardsOn(state, mode) {
+  if (state?.quiz) return state.quiz === 'on';
+  return mode !== 'auto' || (!!state?.status && state.status !== 'PENDING');
+}
+
+async function renderCurrent() {
+  current.hidden = !currentVideo;
+  if (!currentVideo) return;
+  const { videoId, title } = currentVideo;
+  const key = VIDEO_KEY_PREFIX + videoId;
+  const { [key]: state, check_mode: mode } = await chrome.storage.local.get([key, 'check_mode']);
+  const on = cardsOn(state, mode ?? DEFAULT_SETTINGS.check_mode);
+  document.getElementById('current-title').textContent = state?.title || title || videoId;
+  document.getElementById('current-state').textContent = on
+    ? 'Quiz breaks are on for this video'
+    : state?.quiz === 'off'
+      ? 'Quiz breaks are off for this video'
+      : state?.status === 'PENDING'
+        ? 'Gemini is checking this video'
+        : 'Quiz breaks start once Gemini has checked this video';
+  currentToggle.textContent = on ? 'Turn off' : 'Turn on';
+  currentToggle.onclick = () =>
+    chrome.runtime.sendMessage({ type: 'SET_VIDEO_QUIZ', videoId, quiz: on ? 'off' : 'on', title });
+}
+
 // Keep statuses live while the popup is open (e.g. a summary just finished).
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && Object.keys(changes).some((k) => k.startsWith(VIDEO_KEY_PREFIX))) renderVideos();
+  if (area !== 'local') return;
+  if (Object.keys(changes).some((k) => k.startsWith(VIDEO_KEY_PREFIX))) renderVideos();
+  renderCurrent();
 });
 
 fill({ ...(await getPrompts()), ...DEFAULT_SETTINGS, ...(await chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS))) });
 await renderVideos();
+await loadCurrentVideo();
+await renderCurrent();

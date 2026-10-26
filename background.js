@@ -5,8 +5,10 @@ const TAB_LOAD_TIMEOUT_MS = 60_000;
 const MAX_CHAPTERS_IN_PROMPT = 12;
 const MAX_QUIZ_QUESTIONS = 20;
 
-// Per-video state: { status, verdict, title, videoUrl, createdAt, tabId,
-// chatUrl, quizzes }. Kept in storage.local because the service worker can be
+// Per-video state: { status, verdict, quiz, title, videoUrl, createdAt, tabId,
+// chatUrl, quizzes }. status and verdict exist only once the video was sent
+// for a verdict ('auto' check mode or Send again); quiz is the user's choice
+// for this video ('on' / 'off'). Kept in storage.local because the service worker can be
 // unloaded at any time; it also drives the popup history and makes sure each
 // video is processed only once.
 const videoKey = (videoId) => VIDEO_KEY_PREFIX + videoId;
@@ -143,7 +145,10 @@ async function failInterruptedVideos() {
 }
 
 async function processVideo(videoUrl, videoId, title) {
-  if (await getVideoState(videoId)) {
+  // A video that already has a verdict or a chat (its quizzes were asked for
+  // in 'request' mode) is not sent again.
+  const state = await getVideoState(videoId);
+  if (state?.status || state?.chatUrl || state?.quizzes) {
     console.log('[EduFilter] already processed:', videoId);
     return;
   }
@@ -159,12 +164,41 @@ async function processVideo(videoUrl, videoId, title) {
 }
 
 // Forgets the previous result (e.g. an ENTERTAINMENT verdict the user
-// disagrees with) and runs the video through Gemini again.
+// disagrees with) and runs the video through Gemini again. The user's quiz
+// choice for the video is kept.
 async function recheckVideo(videoId) {
   const state = await getVideoState(videoId);
   if (!state) return;
   await chrome.storage.local.remove(videoKey(videoId));
+  if (state.quiz) await patchVideoState(videoId, { quiz: state.quiz });
   await processVideo(state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`, videoId, state.title);
+}
+
+// The user turned the break cards on or off for one video (card or popup).
+async function setVideoQuiz(videoId, quiz, title) {
+  const state = await getVideoState(videoId);
+  await patchVideoState(videoId, {
+    quiz,
+    title: state?.title || title,
+    videoUrl: state?.videoUrl || `https://www.youtube.com/watch?v=${videoId}`,
+    createdAt: state?.createdAt ?? Date.now(),
+  });
+}
+
+// The verdict chat only needs a tab while Gemini answers: once it has, the
+// background tab is closed and reopened from chatUrl when a quiz is asked
+// for. A tab the user has switched to is left alone, and so is one with an
+// error or no verdict, for the user to look at.
+async function closeVerdictTab(tabId, chatUrl) {
+  if (tabId == null || !/^https:\/\/gemini\.google\.com\/app\/[^/?#]+/.test(chatUrl ?? '')) return false;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.active) return false;
+    await chrome.tabs.remove(tabId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function onGeminiResult(msg, tabId) {
@@ -175,6 +209,10 @@ async function onGeminiResult(msg, tabId) {
   const patch = { status: msg.status, detail: msg.detail ?? null, tabId, chatUrl: msg.chatUrl };
   if (msg.status === 'USEFUL' || msg.status === 'SUMMARY_DONE') patch.verdict = 'USEFUL';
   else if (msg.status === 'FUN') patch.verdict = 'FUN';
+  // A quiz may already have been asked for in this chat (it is queued
+  // behind the verdict); then the tab stays.
+  const quizAsked = Object.values((await getVideoState(videoId))?.quizzes ?? {}).includes('REQUESTED');
+  if (patch.verdict && !quizAsked && (await closeVerdictTab(tabId, msg.chatUrl))) patch.tabId = null;
   await patchVideoState(videoId, patch);
 }
 
@@ -190,10 +228,17 @@ async function openGeminiChat(videoId) {
 // ---------- Quizzes for parts of long videos ----------
 
 // Sends prompt_3 for one part of the video to the video's existing chat, so
-// Gemini keeps the context, and shows that chat to the user.
-async function requestPartQuiz(videoId, part) {
-  const state = await getVideoState(videoId);
-  if (!state) throw new Error(`No state for video ${videoId}`);
+// Gemini keeps the context, and shows that chat to the user. A video that
+// was never sent for a verdict ('request' check mode) gets a new chat here.
+async function requestPartQuiz(videoId, part, title) {
+  let state = await getVideoState(videoId);
+  if (!state?.createdAt) {
+    state = await patchVideoState(videoId, {
+      title,
+      videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      createdAt: Date.now(),
+    });
+  }
 
   let tab = await findChatTab(state);
   if (!tab) {
@@ -246,7 +291,9 @@ async function onPromptResult(msg) {
   const indexes = partIndexes ?? (partIndex != null ? [partIndex] : []);
   if (!videoId || !indexes.length) return;
   const state = await getVideoState(videoId);
-  await patchVideoState(videoId, { quizzes: { ...state?.quizzes, ...statusFor(indexes, msg.status) } });
+  // The first quiz of a 'request' mode video is what creates its chat.
+  const chatUrl = state?.chatUrl || msg.chatUrl;
+  await patchVideoState(videoId, { quizzes: { ...state?.quizzes, ...statusFor(indexes, msg.status) }, chatUrl });
 }
 
 // ---------- Wiring ----------
@@ -354,7 +401,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       recheckVideo(msg.videoId).catch(logError);
       break;
     case 'REQUEST_PART_QUIZ':
-      requestPartQuiz(msg.videoId, msg.part).catch(logError);
+      requestPartQuiz(msg.videoId, msg.part, msg.title).catch(logError);
+      break;
+    case 'SET_VIDEO_QUIZ':
+      setVideoQuiz(msg.videoId, msg.quiz, msg.title).catch(logError);
       break;
   }
 });

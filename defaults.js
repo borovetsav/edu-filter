@@ -22,15 +22,20 @@ export async function getPrompts() {
   return { ...DEFAULT_PROMPTS, ...stored };
 }
 
-// A video is sent to Gemini for a verdict shortly before its first break, so
-// there is no separate setting for that.
+// In 'auto' mode a video is sent to Gemini for a verdict shortly before its
+// first break, so there is no separate setting for that.
 // Quiz breaks in useful videos: one every ~quiz_interval_min minutes of the
 // video timeline, moved to the nearest chapter start when one is close
 // (see SNAP_SHARE in content_yt.js).
 // quiz_questions: number of questions in each quiz.
+// check_mode: 'request' offers quiz breaks in every video and opens Gemini
+// only when a quiz is asked for; 'auto' first has Gemini check each watched
+// video in a background tab. The verdict only sets the tone of the cards: a
+// quiz can be taken on an entertainment video too.
 export const DEFAULT_SETTINGS = {
   quiz_interval_min: 40,
   quiz_questions: 7,
+  check_mode: 'request',
 };
 
 // Per-video state lives in chrome.storage.local under `video:<videoId>`.
