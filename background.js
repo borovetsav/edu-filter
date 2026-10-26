@@ -5,8 +5,10 @@ const TAB_LOAD_TIMEOUT_MS = 60_000;
 const MAX_CHAPTERS_IN_PROMPT = 12;
 const MAX_QUIZ_QUESTIONS = 20;
 
-// Per-video state: { status, verdict, title, videoUrl, createdAt, tabId,
-// chatUrl, quizzes }. Kept in storage.local because the service worker can be
+// Per-video state: { status, verdict, quiz, title, videoUrl, createdAt, tabId,
+// chatUrl, quizzes }. status and verdict exist only once the video was sent
+// for a verdict ('auto' check mode or Send again); quiz is the user's choice
+// for this video ('on' / 'off'). Kept in storage.local because the service worker can be
 // unloaded at any time; it also drives the popup history and makes sure each
 // video is processed only once.
 const videoKey = (videoId) => VIDEO_KEY_PREFIX + videoId;
@@ -117,13 +119,14 @@ async function ensureGeminiScript(tabId) {
 
 // USEFUL is final: the summaries and quizzes are requested later, per stretch.
 const IN_PROGRESS = ['PENDING'];
-const INTERRUPTED =
-  'The extension was reloaded while this video was being processed. Open the chat to see how far Gemini got, or click Send again.';
+const INTERRUPTED = (what) =>
+  `${what} while this video was being processed. Open the chat to see how far Gemini got, or click Send again.`;
 
-// An update or reload orphans the Gemini scripts, so the results of videos
-// and quizzes in flight never arrive. Mark them as failed instead of leaving
-// them "in progress" forever; Send again in the popup restarts a video.
-async function failInterruptedVideos() {
+// An update, reload or browser restart orphans the Gemini scripts, so the
+// results of videos and quizzes in flight never arrive. Mark them as failed
+// instead of leaving them "in progress" forever; Send again in the popup
+// restarts a video.
+async function failInterruptedVideos(detail) {
   const all = await chrome.storage.local.get(null);
   const patch = {};
   for (const [key, state] of Object.entries(all)) {
@@ -133,7 +136,7 @@ async function failInterruptedVideos() {
     );
     const interrupted = IN_PROGRESS.includes(state.status);
     if (interrupted || JSON.stringify(quizzes) !== JSON.stringify(state.quizzes ?? {})) {
-      patch[key] = { ...state, quizzes, ...(interrupted && { status: 'ERROR', detail: INTERRUPTED }) };
+      patch[key] = { ...state, quizzes, ...(interrupted && { status: 'ERROR', detail }) };
     }
   }
   if (Object.keys(patch).length) {
@@ -142,8 +145,15 @@ async function failInterruptedVideos() {
   }
 }
 
-async function processVideo(videoUrl, videoId, title) {
-  if (await getVideoState(videoId)) {
+// Only a conversation address (/app/<id>) is kept as a chat: a bare /app is
+// a new, empty chat (e.g. Gemini failed before the first answer).
+const isChatUrl = (url) => /^https:\/\/gemini\.google\.com\/app\/[^/?#]+/.test(url ?? '');
+
+async function processVideo(videoUrl, videoId, title, { force = false } = {}) {
+  // A video that already has a verdict or a chat (its quizzes were asked for
+  // in 'request' mode) is not sent again, unless the user asked (Send again).
+  const state = await getVideoState(videoId);
+  if (!force && (state?.status || state?.chatUrl || state?.quizzes)) {
     console.log('[EduFilter] already processed:', videoId);
     return;
   }
@@ -159,12 +169,43 @@ async function processVideo(videoUrl, videoId, title) {
 }
 
 // Forgets the previous result (e.g. an ENTERTAINMENT verdict the user
-// disagrees with) and runs the video through Gemini again.
+// disagrees with) and runs the video through Gemini again. The user's quiz
+// choice for the video is kept.
 async function recheckVideo(videoId) {
   const state = await getVideoState(videoId);
   if (!state) return;
   await chrome.storage.local.remove(videoKey(videoId));
-  await processVideo(state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`, videoId, state.title);
+  if (state.quiz) await patchVideoState(videoId, { quiz: state.quiz });
+  await processVideo(state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`, videoId, state.title, {
+    force: true,
+  });
+}
+
+// The user turned the break cards on or off for one video (card or popup).
+async function setVideoQuiz(videoId, quiz, title) {
+  const state = await getVideoState(videoId);
+  await patchVideoState(videoId, {
+    quiz,
+    title: state?.title || title,
+    videoUrl: state?.videoUrl || `https://www.youtube.com/watch?v=${videoId}`,
+    createdAt: state?.createdAt ?? Date.now(),
+  });
+}
+
+// The verdict chat only needs a tab while Gemini answers: once it has, the
+// background tab is closed and reopened from chatUrl when a quiz is asked
+// for. A tab the user has switched to is left alone, and so is one with an
+// error or no verdict, for the user to look at.
+async function closeVerdictTab(tabId, chatUrl) {
+  if (tabId == null || !isChatUrl(chatUrl)) return false;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.active) return false;
+    await chrome.tabs.remove(tabId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function onGeminiResult(msg, tabId) {
@@ -172,9 +213,14 @@ async function onGeminiResult(msg, tabId) {
   const videoId = videoIdFromUrl(msg.videoUrl);
   if (!videoId) return;
 
-  const patch = { status: msg.status, detail: msg.detail ?? null, tabId, chatUrl: msg.chatUrl };
+  const patch = { status: msg.status, detail: msg.detail ?? null, tabId };
+  if (isChatUrl(msg.chatUrl)) patch.chatUrl = msg.chatUrl;
   if (msg.status === 'USEFUL' || msg.status === 'SUMMARY_DONE') patch.verdict = 'USEFUL';
   else if (msg.status === 'FUN') patch.verdict = 'FUN';
+  // A quiz may already have been asked for in this chat (it is queued
+  // behind the verdict); then the tab stays.
+  const quizAsked = Object.values((await getVideoState(videoId))?.quizzes ?? {}).includes('REQUESTED');
+  if (patch.verdict && !quizAsked && (await closeVerdictTab(tabId, msg.chatUrl))) patch.tabId = null;
   await patchVideoState(videoId, patch);
 }
 
@@ -190,11 +236,31 @@ async function openGeminiChat(videoId) {
 // ---------- Quizzes for parts of long videos ----------
 
 // Sends prompt_3 for one part of the video to the video's existing chat, so
-// Gemini keeps the context, and shows that chat to the user.
-async function requestPartQuiz(videoId, part) {
-  const state = await getVideoState(videoId);
-  if (!state) throw new Error(`No state for video ${videoId}`);
+// Gemini keeps the context, and shows that chat to the user. A video that
+// was never sent for a verdict ('request' check mode) gets a new chat here.
+async function requestPartQuiz(videoId, part, title) {
+  let state = await getVideoState(videoId);
+  if (!state?.createdAt) {
+    state = await patchVideoState(videoId, {
+      title,
+      videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      createdAt: Date.now(),
+    });
+  }
+  // A merged card covers several parts; all of them count as requested.
+  // Marked before the tab work, so a verdict arriving meanwhile does not
+  // close the tab; a failure on the way shows up as an error.
+  const partIndexes = part.covers ?? [part.index];
+  await setQuizStatus(videoId, partIndexes, 'REQUESTED');
+  try {
+    await sendPartQuiz(videoId, part, partIndexes, state);
+  } catch (err) {
+    await setQuizStatus(videoId, partIndexes, 'ERROR');
+    throw err;
+  }
+}
 
+async function sendPartQuiz(videoId, part, partIndexes, state) {
   let tab = await findChatTab(state);
   if (!tab) {
     tab = await chrome.tabs.create({ url: state.chatUrl || GEMINI_URL, active: true });
@@ -217,6 +283,8 @@ async function requestPartQuiz(videoId, part) {
   const questions = Number.isInteger(quiz_questions) && quiz_questions >= 1 && quiz_questions <= MAX_QUIZ_QUESTIONS
     ? quiz_questions
     : DEFAULT_SETTINGS.quiz_questions;
+  const { answer_language } = await chrome.storage.local.get('answer_language');
+  const language = String(answer_language ?? '').trim() || DEFAULT_SETTINGS.answer_language;
   const prompt = fillTemplate(prompt_3, {
     part: part.index + 1,
     total: part.total,
@@ -225,11 +293,9 @@ async function requestPartQuiz(videoId, part) {
     chapters: titles.length ? `. Topics of this part: ${titles.join('; ')}` : '',
     url: state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`,
     questions,
+    language,
   });
 
-  // A merged card covers several parts; all of them count as requested.
-  const partIndexes = part.covers ?? [part.index];
-  await patchVideoState(videoId, { quizzes: { ...state.quizzes, ...statusFor(partIndexes, 'REQUESTED') } });
   await chrome.tabs.sendMessage(tab.id, {
     type: 'SEND_PROMPT',
     prompt,
@@ -240,13 +306,30 @@ async function requestPartQuiz(videoId, part) {
 
 const statusFor = (indexes, status) => Object.fromEntries(indexes.map((i) => [i, status]));
 
+// Reads the quizzes right before writing, so results of other parts that
+// arrived in the meantime are kept.
+async function setQuizStatus(videoId, indexes, status, extra = {}) {
+  const state = await getVideoState(videoId);
+  await patchVideoState(videoId, { ...extra, quizzes: { ...state?.quizzes, ...statusFor(indexes, status) } });
+}
+
+// The chat address of a new chat, reported as soon as Gemini assigns it.
+async function onChatUrl(msg) {
+  const { videoId } = msg.meta ?? {};
+  if (!videoId || !isChatUrl(msg.chatUrl)) return;
+  const state = await getVideoState(videoId);
+  if (state && !state.chatUrl) await patchVideoState(videoId, { chatUrl: msg.chatUrl });
+}
+
 async function onPromptResult(msg) {
   console.log('[EduFilter] prompt result:', msg.label, msg.status, msg.detail ?? '');
   const { videoId, partIndexes, partIndex } = msg.meta ?? {};
   const indexes = partIndexes ?? (partIndex != null ? [partIndex] : []);
   if (!videoId || !indexes.length) return;
   const state = await getVideoState(videoId);
-  await patchVideoState(videoId, { quizzes: { ...state?.quizzes, ...statusFor(indexes, msg.status) } });
+  // The first quiz of a 'request' mode video is what creates its chat.
+  const extra = !state?.chatUrl && isChatUrl(msg.chatUrl) ? { chatUrl: msg.chatUrl } : {};
+  await setQuizStatus(videoId, indexes, msg.status, extra);
 }
 
 // ---------- Wiring ----------
@@ -294,6 +377,19 @@ const PROMPT_3_DEFAULT_1_8 =
 const PROMPT_3_DEFAULT_1_11 =
   'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then make an INTERACTIVE quiz on that part: use your built-in interactive quiz feature, the one where I click an answer option and immediately see whether it is right, with an explanation. Do NOT write the quiz as plain text, and do NOT list the questions or answers in the message. The quiz must check real understanding, not memory of details: {questions} multiple-choice questions. No questions about names, dates, exact numbers, wording or who said what. Instead, ask the learner to apply an idea from the video to a new situation or example that was not in the video, to explain why something works or what causes what, to predict what happens if a condition changes, to compare or tell apart two close concepts, or to find the mistake in a plausible but wrong statement. Make the wrong options believable: typical misconceptions or half-right answers that someone who only skimmed the video would pick, all options similar in length. Order the questions from easier to harder. In each explanation, say why the right answer is right, why the tempting wrong answer is wrong, and the timestamp where this is explained. Write everything in Russian. Video: {url}';
 
+// The 1.12 default prompt_3 had English written into it; since 1.13 the
+// language comes from the answer_language setting ({language}). A saved
+// copy where only that word was changed keeps its language as the setting.
+const PROMPT_3_DEFAULT_1_12 =
+  'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then make an INTERACTIVE quiz on that part: use your built-in interactive quiz feature, the one where I click an answer option and immediately see whether it is right, with an explanation. Do NOT write the quiz as plain text, and do NOT list the questions or answers in the message. The quiz must check real understanding, not memory of details: {questions} multiple-choice questions. No questions about names, dates, exact numbers, wording or who said what. Instead, ask the learner to apply an idea from the video to a new situation or example that was not in the video, to explain why something works or what causes what, to predict what happens if a condition changes, to compare or tell apart two close concepts, or to find the mistake in a plausible but wrong statement. Make the wrong options believable: typical misconceptions or half-right answers that someone who only skimmed the video would pick, all options similar in length. Order the questions from easier to harder. In each explanation, say why the right answer is right, why the tempting wrong answer is wrong, and the timestamp where this is explained. Write everything in English. Video: {url}';
+
+function languageInPrompt3_1_12(prompt) {
+  const [head, tail] = PROMPT_3_DEFAULT_1_12.split('English');
+  if (typeof prompt !== 'string' || !prompt.startsWith(head) || !prompt.endsWith(tail)) return null;
+  const language = prompt.slice(head.length, prompt.length - tail.length).trim();
+  return language && language.length <= 40 ? language : null;
+}
+
 // One-time migrations, run only when updating from an older version (not on
 // later updates or unpacked reloads).
 // - From 1.0, which shipped Russian prompts with Russian verdict words: the
@@ -305,9 +401,14 @@ const PROMPT_3_DEFAULT_1_11 =
 // - From 1.7: see PROMPT_3_DEFAULT_1_7.
 // - From 1.8: see PROMPT_3_DEFAULT_1_8.
 // - From 1.9-1.11: see PROMPT_3_DEFAULT_1_11.
+// - From 1.12: see PROMPT_3_DEFAULT_1_12.
+chrome.runtime.onStartup.addListener(() => {
+  failInterruptedVideos(INTERRUPTED('Chrome was closed')).catch((err) => console.error('[EduFilter]', err));
+});
+
 chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (reason !== 'update') return;
-  await failInterruptedVideos();
+  await failInterruptedVideos(INTERRUPTED('The extension was reloaded'));
   const { prompt_1, prompt_2, prompt_3 } = await chrome.storage.local.get(['prompt_1', 'prompt_2', 'prompt_3']);
   const stale = [];
   if (isOlderThan(previousVersion, '1.1.0')) {
@@ -323,6 +424,13 @@ chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (isOlderThan(previousVersion, '1.8.0') && prompt_3 === PROMPT_3_DEFAULT_1_7) stale.push('prompt_3');
   if (isOlderThan(previousVersion, '1.9.0') && prompt_3 === PROMPT_3_DEFAULT_1_8) stale.push('prompt_3');
   if (isOlderThan(previousVersion, '1.12.0') && prompt_3 === PROMPT_3_DEFAULT_1_11) stale.push('prompt_3');
+  if (isOlderThan(previousVersion, '1.13.0')) {
+    const language = languageInPrompt3_1_12(prompt_3);
+    if (language) {
+      stale.push('prompt_3');
+      await chrome.storage.local.set({ answer_language: language });
+    }
+  }
   // Settings that were removed: since 1.10 the verdict is asked before the
   // first break; since 1.11 breaks snap to chapters by a share of the interval.
   if (isOlderThan(previousVersion, '1.11.0')) await chrome.storage.local.remove(['watch_threshold_min', 'quiz_snap_min']);
@@ -344,6 +452,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case 'GEMINI_PROMPT_RESULT':
       onPromptResult(msg).catch(logError);
       break;
+    case 'GEMINI_CHAT_URL':
+      onChatUrl(msg).catch(logError);
+      break;
     case 'GET_VIDEO_STATUS':
       getVideoState(msg.videoId).then(sendResponse, () => sendResponse(null));
       return true; // async response
@@ -354,7 +465,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       recheckVideo(msg.videoId).catch(logError);
       break;
     case 'REQUEST_PART_QUIZ':
-      requestPartQuiz(msg.videoId, msg.part).catch(logError);
+      requestPartQuiz(msg.videoId, msg.part, msg.title).catch(logError);
+      break;
+    case 'SET_VIDEO_QUIZ':
+      setVideoQuiz(msg.videoId, msg.quiz, msg.title).catch(logError);
       break;
   }
 });

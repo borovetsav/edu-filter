@@ -64,6 +64,13 @@
     #clear { padding: 0; border: 0; background: none; color: var(--muted); font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; }
     #clear:hover { color: var(--red); }
 
+    /* Current video */
+    #current { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+    #current[hidden] { display: none; }
+    #current-title { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    #current-state { margin-top: 3px; color: var(--muted); font-size: 11.5px; }
+    #current-toggle { flex: none; }
+
     /* Videos */
     #videos { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
     #videos li { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
@@ -100,8 +107,11 @@
     .field { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
     .field label { flex: 1; }
     .num { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+    .lang { display: flex; gap: 6px; }
+    #answer_language { width: 110px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+    select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
     .num input { width: 58px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; text-align: right; }
-    input:focus, textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: transparent; }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: transparent; }
     .hint { margin: 4px 0 0; font-size: 11.5px; color: var(--muted); }
     .prompt-label { display: block; margin: 10px 0 5px; font-weight: 600; }
     .prompt-label .hint { display: inline; font-weight: 400; }
@@ -132,9 +142,17 @@
   </header>
 
   <main>
+    <div id="current" hidden>
+      <div class="info">
+        <div id="current-title"></div>
+        <div id="current-state"></div>
+      </div>
+      <button id="current-toggle" class="retry"></button>
+    </div>
+
     <div class="section-title">Videos <button id="clear" hidden>clear history</button></div>
     <ul id="videos"></ul>
-    <p id="empty" class="empty"><b>Nothing here yet</b>Keep watching a lecture and it shows up here, with a link to its Gemini chat.</p>
+    <p id="empty" class="empty"><b>Nothing here yet</b>Take a quiz at a break, and the video shows up here with a link to its Gemini chat.</p>
 
     <details>
       <summary>Settings</summary>
@@ -148,12 +166,34 @@
           <label for="quiz_questions">Questions per quiz</label>
           <span class="num"><input id="quiz_questions" type="number" min="1" max="20" step="1"></span>
         </div>
-        <p class="hint">Breaks move to the nearest chapter start, so a quiz doesn't cut a topic in half. A short video gets one quiz near its end. Gemini checks whether a video is useful about 2 minutes before its first quiz.</p>
+        <div class="field">
+          <label for="answer_language_pick">Answer language</label>
+          <span class="lang">
+            <select id="answer_language_pick">
+              <option value="English">English</option>
+              <option value="Chinese">Chinese</option>
+              <option value="Hindi">Hindi</option>
+              <option value="Spanish">Spanish</option>
+              <option value="Arabic">Arabic</option>
+              <option value="Russian">Russian</option>
+              <option value="">Other…</option>
+            </select>
+            <input id="answer_language" type="text" placeholder="Any language" hidden>
+          </span>
+        </div>
+        <div class="field">
+          <label for="check_mode">Gemini opens</label>
+          <select id="check_mode">
+            <option value="request">only when I ask for a quiz</option>
+            <option value="auto">to check every video</option>
+          </select>
+        </div>
+        <p class="hint">Breaks move to the nearest chapter start, so a quiz doesn't cut a topic in half. A video under 10 minutes gets one quiz near its end only if you turn quizzes on for it. To check every video, Gemini opens in a background tab about 2 minutes before the first break and closes once it answers; an entertainment video still gets a card, if you want a quiz anyway.</p>
 
         <div class="group-title">Prompts</div>
         <label class="prompt-label" for="prompt_1">Classification <span class="hint">(the video URL is appended)</span></label>
         <textarea id="prompt_1"></textarea>
-        <label class="prompt-label" for="prompt_3">Summary and quiz for a stretch <span class="hint">({start} {end} {chapters} {url} {questions})</span></label>
+        <label class="prompt-label" for="prompt_3">Summary and quiz for a stretch <span class="hint">({start} {end} {chapters} {url} {questions} {language})</span></label>
         <textarea id="prompt_3"></textarea>
 
         <div class="row">

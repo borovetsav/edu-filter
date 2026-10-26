@@ -420,7 +420,7 @@
   async function sendExtraPrompt({ prompt, label, meta }) {
     const result = (status, detail) => {
       showStatus(`${label}: ${status}${detail ? `\n${detail}` : ''}`);
-      notify({ type: 'GEMINI_PROMPT_RESULT', label, status, detail, meta });
+      notify({ type: 'GEMINI_PROMPT_RESULT', label, status, detail, meta, chatUrl: location.href });
     };
     try {
       // A chat reopened from its URL renders its history a moment after the
@@ -430,6 +430,13 @@
       }
       const before = getResponses().length;
       await sendPrompt(prompt);
+      // A new chat gets its /app/<id> address a moment after the prompt is
+      // sent; report it right away, so the chat is not lost if the tab is
+      // closed before the answer is done.
+      waitFor(() => /^\/app\/[^/]+/.test(location.pathname), 60_000, 'the chat address').then(
+        () => notify({ type: 'GEMINI_CHAT_URL', chatUrl: location.href, meta }),
+        () => {}
+      );
       await waitForNewResponse(before, { step: label, quietMs: 4000, timeoutMs: 10 * 60_000 });
       result('DONE');
     } catch (err) {
