@@ -430,6 +430,13 @@
       }
       const before = getResponses().length;
       await sendPrompt(prompt);
+      // A new chat gets its /app/<id> address a moment after the prompt is
+      // sent; report it right away, so the chat is not lost if the tab is
+      // closed before the answer is done.
+      waitFor(() => /^\/app\/[^/]+/.test(location.pathname), 60_000, 'the chat address').then(
+        () => notify({ type: 'GEMINI_CHAT_URL', chatUrl: location.href, meta }),
+        () => {}
+      );
       await waitForNewResponse(before, { step: label, quietMs: 4000, timeoutMs: 10 * 60_000 });
       result('DONE');
     } catch (err) {

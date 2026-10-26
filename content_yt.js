@@ -46,6 +46,7 @@
   let videoState = null; // cached GET_VIDEO_STATUS answer for videoId
   let stateLoaded = false; // videoState has been fetched at least once for videoId
   let lastStateFetch = 0;
+  let lastStateChange = 0; // performance.now() of the last storage change seen for videoId
   let settings = { ...DEFAULT_SETTINGS };
   let parts; // undefined: not computed yet, null: no quiz breaks in this video
   let lastPos = null; // last known main-video playhead position (not during ads)
@@ -97,6 +98,7 @@
     parts = undefined;
     lastPos = null;
     resetAt = performance.now();
+    document.getElementById(CARD_ID)?.remove(); // a card for the previous video
   }
 
   function formatTime(sec) {
@@ -120,7 +122,15 @@
 
   chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS)).then(applySettings, () => {});
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !Object.keys(DEFAULT_SETTINGS).some((k) => k in changes)) return;
+    if (area !== 'local') return;
+    // This video's state, e.g. switched on or off in the popup: taken at
+    // once, even while the video is paused.
+    const key = `video:${videoId}`;
+    if (videoId && key in changes) {
+      lastStateChange = performance.now();
+      setVideoState(changes[key].newValue ?? null);
+    }
+    if (!Object.keys(DEFAULT_SETTINGS).some((k) => k in changes)) return;
     chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS)).then(applySettings, () => {});
   });
 
@@ -135,7 +145,9 @@
     lastTick = now;
   }
 
+  // Empty while the page still shows the previous video (SPA navigation).
   function videoTitle() {
+    if (document.querySelector('ytd-watch-flexy')?.getAttribute('video-id') !== videoId) return '';
     const h1 = document.querySelector('ytd-watch-metadata h1, #above-the-fold #title h1, h1.title');
     return (h1?.textContent || document.title).replace(/\s*-\s*YouTube\s*$/, '').trim();
   }
@@ -172,10 +184,8 @@
     if (!id || now - lastStateFetch < STATE_REFRESH_MS) return;
     lastStateFetch = now;
     const state = await send({ type: 'GET_VIDEO_STATUS', videoId: id }).catch(() => null);
-    if (id === videoId) {
-      videoState = state;
-      stateLoaded = true;
-    }
+    // A change seen through storage.onChanged meanwhile is newer.
+    if (id === videoId && now >= lastStateChange) setVideoState(state);
   }
 
   // Whether break cards are shown. The user's choice for this video (card or
@@ -184,7 +194,15 @@
   function quizzesOn() {
     if (!stateLoaded || videoState?.quiz === 'off') return false;
     if (videoState?.quiz === 'on' || settings.check_mode !== 'auto') return true;
-    return !!videoState && videoState.status !== 'PENDING';
+    return !!videoState?.status && videoState.status !== 'PENDING';
+  }
+
+  // Takes a new state for this video. Turning the cards back on lets
+  // checkMissedParts() offer the breaks that passed while they were off.
+  function setVideoState(state) {
+    if (state?.quiz === 'on' && videoState?.quiz !== 'on') caughtUp.delete(videoId);
+    videoState = state;
+    stateLoaded = true;
   }
 
   // ---------- Splitting long videos ----------
@@ -447,7 +465,10 @@
   // Tells the background (and this page's cached state) that the user chose
   // to turn the cards on or off for this video.
   function setQuiz(id, quiz) {
-    if (id === videoId) videoState = { ...videoState, quiz };
+    if (id === videoId) {
+      lastStateChange = performance.now();
+      setVideoState({ ...videoState, quiz });
+    }
     return send({ type: 'SET_VIDEO_QUIZ', videoId: id, quiz, title: videoTitle() });
   }
 

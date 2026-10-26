@@ -119,13 +119,14 @@ async function ensureGeminiScript(tabId) {
 
 // USEFUL is final: the summaries and quizzes are requested later, per stretch.
 const IN_PROGRESS = ['PENDING'];
-const INTERRUPTED =
-  'The extension was reloaded while this video was being processed. Open the chat to see how far Gemini got, or click Send again.';
+const INTERRUPTED = (what) =>
+  `${what} while this video was being processed. Open the chat to see how far Gemini got, or click Send again.`;
 
-// An update or reload orphans the Gemini scripts, so the results of videos
-// and quizzes in flight never arrive. Mark them as failed instead of leaving
-// them "in progress" forever; Send again in the popup restarts a video.
-async function failInterruptedVideos() {
+// An update, reload or browser restart orphans the Gemini scripts, so the
+// results of videos and quizzes in flight never arrive. Mark them as failed
+// instead of leaving them "in progress" forever; Send again in the popup
+// restarts a video.
+async function failInterruptedVideos(detail) {
   const all = await chrome.storage.local.get(null);
   const patch = {};
   for (const [key, state] of Object.entries(all)) {
@@ -135,7 +136,7 @@ async function failInterruptedVideos() {
     );
     const interrupted = IN_PROGRESS.includes(state.status);
     if (interrupted || JSON.stringify(quizzes) !== JSON.stringify(state.quizzes ?? {})) {
-      patch[key] = { ...state, quizzes, ...(interrupted && { status: 'ERROR', detail: INTERRUPTED }) };
+      patch[key] = { ...state, quizzes, ...(interrupted && { status: 'ERROR', detail }) };
     }
   }
   if (Object.keys(patch).length) {
@@ -144,11 +145,15 @@ async function failInterruptedVideos() {
   }
 }
 
-async function processVideo(videoUrl, videoId, title) {
+// Only a conversation address (/app/<id>) is kept as a chat: a bare /app is
+// a new, empty chat (e.g. Gemini failed before the first answer).
+const isChatUrl = (url) => /^https:\/\/gemini\.google\.com\/app\/[^/?#]+/.test(url ?? '');
+
+async function processVideo(videoUrl, videoId, title, { force = false } = {}) {
   // A video that already has a verdict or a chat (its quizzes were asked for
-  // in 'request' mode) is not sent again.
+  // in 'request' mode) is not sent again, unless the user asked (Send again).
   const state = await getVideoState(videoId);
-  if (state?.status || state?.chatUrl || state?.quizzes) {
+  if (!force && (state?.status || state?.chatUrl || state?.quizzes)) {
     console.log('[EduFilter] already processed:', videoId);
     return;
   }
@@ -171,7 +176,9 @@ async function recheckVideo(videoId) {
   if (!state) return;
   await chrome.storage.local.remove(videoKey(videoId));
   if (state.quiz) await patchVideoState(videoId, { quiz: state.quiz });
-  await processVideo(state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`, videoId, state.title);
+  await processVideo(state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`, videoId, state.title, {
+    force: true,
+  });
 }
 
 // The user turned the break cards on or off for one video (card or popup).
@@ -190,7 +197,7 @@ async function setVideoQuiz(videoId, quiz, title) {
 // for. A tab the user has switched to is left alone, and so is one with an
 // error or no verdict, for the user to look at.
 async function closeVerdictTab(tabId, chatUrl) {
-  if (tabId == null || !/^https:\/\/gemini\.google\.com\/app\/[^/?#]+/.test(chatUrl ?? '')) return false;
+  if (tabId == null || !isChatUrl(chatUrl)) return false;
   try {
     const tab = await chrome.tabs.get(tabId);
     if (tab.active) return false;
@@ -206,7 +213,8 @@ async function onGeminiResult(msg, tabId) {
   const videoId = videoIdFromUrl(msg.videoUrl);
   if (!videoId) return;
 
-  const patch = { status: msg.status, detail: msg.detail ?? null, tabId, chatUrl: msg.chatUrl };
+  const patch = { status: msg.status, detail: msg.detail ?? null, tabId };
+  if (isChatUrl(msg.chatUrl)) patch.chatUrl = msg.chatUrl;
   if (msg.status === 'USEFUL' || msg.status === 'SUMMARY_DONE') patch.verdict = 'USEFUL';
   else if (msg.status === 'FUN') patch.verdict = 'FUN';
   // A quiz may already have been asked for in this chat (it is queued
@@ -239,6 +247,20 @@ async function requestPartQuiz(videoId, part, title) {
       createdAt: Date.now(),
     });
   }
+  // A merged card covers several parts; all of them count as requested.
+  // Marked before the tab work, so a verdict arriving meanwhile does not
+  // close the tab; a failure on the way shows up as an error.
+  const partIndexes = part.covers ?? [part.index];
+  await setQuizStatus(videoId, partIndexes, 'REQUESTED');
+  try {
+    await sendPartQuiz(videoId, part, partIndexes, state);
+  } catch (err) {
+    await setQuizStatus(videoId, partIndexes, 'ERROR');
+    throw err;
+  }
+}
+
+async function sendPartQuiz(videoId, part, partIndexes, state) {
 
   let tab = await findChatTab(state);
   if (!tab) {
@@ -275,9 +297,6 @@ async function requestPartQuiz(videoId, part, title) {
     language,
   });
 
-  // A merged card covers several parts; all of them count as requested.
-  const partIndexes = part.covers ?? [part.index];
-  await patchVideoState(videoId, { quizzes: { ...state.quizzes, ...statusFor(partIndexes, 'REQUESTED') } });
   await chrome.tabs.sendMessage(tab.id, {
     type: 'SEND_PROMPT',
     prompt,
@@ -288,6 +307,21 @@ async function requestPartQuiz(videoId, part, title) {
 
 const statusFor = (indexes, status) => Object.fromEntries(indexes.map((i) => [i, status]));
 
+// Reads the quizzes right before writing, so results of other parts that
+// arrived in the meantime are kept.
+async function setQuizStatus(videoId, indexes, status, extra = {}) {
+  const state = await getVideoState(videoId);
+  await patchVideoState(videoId, { ...extra, quizzes: { ...state?.quizzes, ...statusFor(indexes, status) } });
+}
+
+// The chat address of a new chat, reported as soon as Gemini assigns it.
+async function onChatUrl(msg) {
+  const { videoId } = msg.meta ?? {};
+  if (!videoId || !isChatUrl(msg.chatUrl)) return;
+  const state = await getVideoState(videoId);
+  if (state && !state.chatUrl) await patchVideoState(videoId, { chatUrl: msg.chatUrl });
+}
+
 async function onPromptResult(msg) {
   console.log('[EduFilter] prompt result:', msg.label, msg.status, msg.detail ?? '');
   const { videoId, partIndexes, partIndex } = msg.meta ?? {};
@@ -295,8 +329,8 @@ async function onPromptResult(msg) {
   if (!videoId || !indexes.length) return;
   const state = await getVideoState(videoId);
   // The first quiz of a 'request' mode video is what creates its chat.
-  const chatUrl = state?.chatUrl || msg.chatUrl;
-  await patchVideoState(videoId, { quizzes: { ...state?.quizzes, ...statusFor(indexes, msg.status) }, chatUrl });
+  const extra = !state?.chatUrl && isChatUrl(msg.chatUrl) ? { chatUrl: msg.chatUrl } : {};
+  await setQuizStatus(videoId, indexes, msg.status, extra);
 }
 
 // ---------- Wiring ----------
@@ -369,9 +403,13 @@ function languageInPrompt3_1_12(prompt) {
 // - From 1.8: see PROMPT_3_DEFAULT_1_8.
 // - From 1.9-1.11: see PROMPT_3_DEFAULT_1_11.
 // - From 1.12: see PROMPT_3_DEFAULT_1_12.
+chrome.runtime.onStartup.addListener(() => {
+  failInterruptedVideos(INTERRUPTED('Chrome was closed')).catch((err) => console.error('[EduFilter]', err));
+});
+
 chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (reason !== 'update') return;
-  await failInterruptedVideos();
+  await failInterruptedVideos(INTERRUPTED('The extension was reloaded'));
   const { prompt_1, prompt_2, prompt_3 } = await chrome.storage.local.get(['prompt_1', 'prompt_2', 'prompt_3']);
   const stale = [];
   if (isOlderThan(previousVersion, '1.1.0')) {
@@ -414,6 +452,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break;
     case 'GEMINI_PROMPT_RESULT':
       onPromptResult(msg).catch(logError);
+      break;
+    case 'GEMINI_CHAT_URL':
+      onChatUrl(msg).catch(logError);
       break;
     case 'GET_VIDEO_STATUS':
       getVideoState(msg.videoId).then(sendResponse, () => sendResponse(null));
