@@ -261,7 +261,6 @@ async function requestPartQuiz(videoId, part, title) {
 }
 
 async function sendPartQuiz(videoId, part, partIndexes, state) {
-
   let tab = await findChatTab(state);
   if (!tab) {
     tab = await chrome.tabs.create({ url: state.chatUrl || GEMINI_URL, active: true });
