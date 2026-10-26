@@ -262,6 +262,8 @@ async function requestPartQuiz(videoId, part, title) {
   const questions = Number.isInteger(quiz_questions) && quiz_questions >= 1 && quiz_questions <= MAX_QUIZ_QUESTIONS
     ? quiz_questions
     : DEFAULT_SETTINGS.quiz_questions;
+  const { answer_language } = await chrome.storage.local.get('answer_language');
+  const language = String(answer_language ?? '').trim() || DEFAULT_SETTINGS.answer_language;
   const prompt = fillTemplate(prompt_3, {
     part: part.index + 1,
     total: part.total,
@@ -270,6 +272,7 @@ async function requestPartQuiz(videoId, part, title) {
     chapters: titles.length ? `. Topics of this part: ${titles.join('; ')}` : '',
     url: state.videoUrl || `https://www.youtube.com/watch?v=${videoId}`,
     questions,
+    language,
   });
 
   // A merged card covers several parts; all of them count as requested.
@@ -341,6 +344,19 @@ const PROMPT_3_DEFAULT_1_8 =
 const PROMPT_3_DEFAULT_1_11 =
   'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then make an INTERACTIVE quiz on that part: use your built-in interactive quiz feature, the one where I click an answer option and immediately see whether it is right, with an explanation. Do NOT write the quiz as plain text, and do NOT list the questions or answers in the message. The quiz must check real understanding, not memory of details: {questions} multiple-choice questions. No questions about names, dates, exact numbers, wording or who said what. Instead, ask the learner to apply an idea from the video to a new situation or example that was not in the video, to explain why something works or what causes what, to predict what happens if a condition changes, to compare or tell apart two close concepts, or to find the mistake in a plausible but wrong statement. Make the wrong options believable: typical misconceptions or half-right answers that someone who only skimmed the video would pick, all options similar in length. Order the questions from easier to harder. In each explanation, say why the right answer is right, why the tempting wrong answer is wrong, and the timestamp where this is explained. Write everything in Russian. Video: {url}';
 
+// The 1.12 default prompt_3 had English written into it; since 1.13 the
+// language comes from the answer_language setting ({language}). A saved
+// copy where only that word was changed keeps its language as the setting.
+const PROMPT_3_DEFAULT_1_12 =
+  'Now cover ONLY the part of this video from {start} to {end}{chapters}. First write a detailed summary of that part, broken down by timestamps (for each key moment: the timestamp and what is explained there). Then make an INTERACTIVE quiz on that part: use your built-in interactive quiz feature, the one where I click an answer option and immediately see whether it is right, with an explanation. Do NOT write the quiz as plain text, and do NOT list the questions or answers in the message. The quiz must check real understanding, not memory of details: {questions} multiple-choice questions. No questions about names, dates, exact numbers, wording or who said what. Instead, ask the learner to apply an idea from the video to a new situation or example that was not in the video, to explain why something works or what causes what, to predict what happens if a condition changes, to compare or tell apart two close concepts, or to find the mistake in a plausible but wrong statement. Make the wrong options believable: typical misconceptions or half-right answers that someone who only skimmed the video would pick, all options similar in length. Order the questions from easier to harder. In each explanation, say why the right answer is right, why the tempting wrong answer is wrong, and the timestamp where this is explained. Write everything in English. Video: {url}';
+
+function languageInPrompt3_1_12(prompt) {
+  const [head, tail] = PROMPT_3_DEFAULT_1_12.split('English');
+  if (typeof prompt !== 'string' || !prompt.startsWith(head) || !prompt.endsWith(tail)) return null;
+  const language = prompt.slice(head.length, prompt.length - tail.length).trim();
+  return language && language.length <= 40 ? language : null;
+}
+
 // One-time migrations, run only when updating from an older version (not on
 // later updates or unpacked reloads).
 // - From 1.0, which shipped Russian prompts with Russian verdict words: the
@@ -352,6 +368,7 @@ const PROMPT_3_DEFAULT_1_11 =
 // - From 1.7: see PROMPT_3_DEFAULT_1_7.
 // - From 1.8: see PROMPT_3_DEFAULT_1_8.
 // - From 1.9-1.11: see PROMPT_3_DEFAULT_1_11.
+// - From 1.12: see PROMPT_3_DEFAULT_1_12.
 chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (reason !== 'update') return;
   await failInterruptedVideos();
@@ -370,6 +387,13 @@ chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   if (isOlderThan(previousVersion, '1.8.0') && prompt_3 === PROMPT_3_DEFAULT_1_7) stale.push('prompt_3');
   if (isOlderThan(previousVersion, '1.9.0') && prompt_3 === PROMPT_3_DEFAULT_1_8) stale.push('prompt_3');
   if (isOlderThan(previousVersion, '1.12.0') && prompt_3 === PROMPT_3_DEFAULT_1_11) stale.push('prompt_3');
+  if (isOlderThan(previousVersion, '1.13.0')) {
+    const language = languageInPrompt3_1_12(prompt_3);
+    if (language) {
+      stale.push('prompt_3');
+      await chrome.storage.local.set({ answer_language: language });
+    }
+  }
   // Settings that were removed: since 1.10 the verdict is asked before the
   // first break; since 1.11 breaks snap to chapters by a share of the interval.
   if (isOlderThan(previousVersion, '1.11.0')) await chrome.storage.local.remove(['watch_threshold_min', 'quiz_snap_min']);

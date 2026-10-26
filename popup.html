@@ -107,6 +107,7 @@
     .field { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
     .field label { flex: 1; }
     .num { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+    #answer_language { width: 150px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
     select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
     .num input { width: 58px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; text-align: right; }
     input:focus, textarea:focus, select:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: transparent; }
@@ -165,6 +166,20 @@
           <span class="num"><input id="quiz_questions" type="number" min="1" max="20" step="1"></span>
         </div>
         <div class="field">
+          <label for="answer_language">Answer language</label>
+          <input id="answer_language" type="text" list="languages" placeholder="English">
+          <datalist id="languages">
+            <option value="English"></option>
+            <option value="Russian"></option>
+            <option value="Ukrainian"></option>
+            <option value="Spanish"></option>
+            <option value="German"></option>
+            <option value="French"></option>
+            <option value="Portuguese"></option>
+            <option value="Chinese"></option>
+          </datalist>
+        </div>
+        <div class="field">
           <label for="check_mode">Gemini opens</label>
           <select id="check_mode">
             <option value="request">only when I ask for a quiz</option>
@@ -176,7 +191,7 @@
         <div class="group-title">Prompts</div>
         <label class="prompt-label" for="prompt_1">Classification <span class="hint">(the video URL is appended)</span></label>
         <textarea id="prompt_1"></textarea>
-        <label class="prompt-label" for="prompt_3">Summary and quiz for a stretch <span class="hint">({start} {end} {chapters} {url} {questions})</span></label>
+        <label class="prompt-label" for="prompt_3">Summary and quiz for a stretch <span class="hint">({start} {end} {chapters} {url} {questions} {language})</span></label>
         <textarea id="prompt_3"></textarea>
 
         <div class="row">

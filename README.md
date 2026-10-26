@@ -54,8 +54,9 @@ Click the extension icon → **Settings**. Changes are saved as you type.
 |---|---|---|
 | Quiz every | ~40 min | Distance between breaks. Breaks move to the nearest chapter start, so a quiz doesn't cut a topic in half. |
 | Questions per quiz | 7 | 1-20. |
+| Answer language | English | Language of summaries and quizzes: pick one or type any language Gemini understands. |
 | Gemini opens | only when I ask for a quiz | Or **to check every video**: Gemini checks in a background tab whether a video is educational, about 2 minutes before the first break, and the tab closes once it answers. Cards then wait for the verdict. An entertainment video still gets a card, worded "Quiz anyway?". |
-| Prompts | | Classification (must ask for `USEFUL` or `ENTERTAINMENT`) and summary + quiz (placeholders `{start}` `{end}` `{chapters}` `{url}` `{questions}`). Answers are in English by default; change that line for another language. |
+| Prompts | | Classification (must ask for `USEFUL` or `ENTERTAINMENT`) and summary + quiz (placeholders `{start}` `{end}` `{chapters}` `{url}` `{questions}` `{language}`). |
 
 Skipping ahead past a break also shows the card; one card covers every stretch you skipped. Videos too short for a break get one card near the end, if they are at least 10 minutes long, Gemini called them educational, or you turned quizzes on in the popup.
 
